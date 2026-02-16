@@ -16,8 +16,6 @@ public class ExplodedView : MonoBehaviour
     public bool useHierarchicalCenter = false;
     public bool useBoundsCenter = false;
     public bool autoGroupChildren = false;
-    public bool drawDebugLines = false;
-    public Color debugLineColor = Color.yellow;
 
     [System.Serializable]
     public class PartData
@@ -31,6 +29,10 @@ public class ExplodedView : MonoBehaviour
         public List<Transform> controlPoints = new List<Transform>(); // New: Custom curve control
         public BoltUnscrew boltComponent; // New: Thread/Unscrew Animation logic
         public List<Annotation> annotations = new List<Annotation>(); // New: Support multiple labels per part
+        
+        [Header("Motion Quality")]
+        public AnimationCurve motionCurve = AnimationCurve.Linear(0, 0, 1, 1);
+        public float delay = 0f;
     }
 
     [SerializeField] // Serialize to keep data between reloads/play mode
@@ -57,6 +59,16 @@ public class ExplodedView : MonoBehaviour
     public bool linkExplosionFactors = false;
     public bool orchestrateParts = false;
     public bool separateMovementAndOrchestration = false;
+
+    [Header("Global Motion")]
+    public AnimationCurve globalMotionCurve = AnimationCurve.Linear(0, 0, 1, 1);
+
+    [Header("Debug Overlays")]
+    public bool drawDebugLines = true;
+    public Color debugLineColor = Color.yellow;
+    public bool showHeatmap = false;
+    public bool showPathLength = false;
+    public bool applyDebugToChildren = true; // NEW: Propagate these settings down
 
     [Header("Global Annotation Settings")]
     public bool showAnnotations = true;
@@ -414,6 +426,19 @@ public class ExplodedView : MonoBehaviour
                     // IMPORTANT: Recursively drive the sub-manager's orchestration logic too!
                     sub.orchestrationFactor = val;
                 }
+
+                // Hierarchical Propagation of Visuals
+                if (applyDebugToChildren)
+                {
+                    sub.applyDebugToChildren = true;
+                    sub.drawDebugLines = drawDebugLines;
+                    sub.debugLineColor = debugLineColor;
+                    sub.showHeatmap = showHeatmap;
+                    sub.showPathLength = showPathLength;
+                    sub.showAnnotations = showAnnotations;
+                    sub.globalAnnotationScale = globalAnnotationScale;
+                    sub.globalAnnotationOffset = globalAnnotationOffset;
+                }
             }
         }
 
@@ -435,20 +460,35 @@ public class ExplodedView : MonoBehaviour
                 float end = (i + 1) * partsStep;
                 effectivePartFactor = Mathf.InverseLerp(start, end, effectiveLocalFactor);
             }
+
+            // Apply Motion Quality Controls
+            float motionTime = effectivePartFactor;
+            
+            // 1. Apply Delay (Local)
+            if (part.delay > 0)
+            {
+                motionTime = Mathf.InverseLerp(part.delay, 1f, motionTime);
+            }
+
+            // 2. Apply Per-Part Motion Curve
+            motionTime = part.motionCurve.Evaluate(motionTime);
+
+            // 3. Apply Global Motion Curve
+            motionTime = globalMotionCurve.Evaluate(motionTime);
             
             // Priority: Special Components Override Modes
             if (part.boltComponent != null)
             {
-                part.boltComponent.Animate(effectivePartFactor);
+                part.boltComponent.Animate(motionTime);
             }
             else if (explosionMode == ExplosionMode.Spherical)
             {
-                Vector3 displacement = part.direction * (effectivePartFactor * sensitivity);
+                Vector3 displacement = part.direction * (motionTime * sensitivity);
                 part.transform.localPosition = part.originalLocalPosition + displacement;
             }
             else if (explosionMode == ExplosionMode.Target && part.targetTransform != null)
             {
-                part.transform.localPosition = Vector3.Lerp(part.originalLocalPosition, part.targetTransform.localPosition, effectivePartFactor);
+                part.transform.localPosition = Vector3.Lerp(part.originalLocalPosition, part.targetTransform.localPosition, motionTime);
             }
             else if (explosionMode == ExplosionMode.Curved && part.targetTransform != null)
             {
@@ -458,7 +498,7 @@ public class ExplodedView : MonoBehaviour
                 foreach (var cp in part.controlPoints) if (cp != null) points.Add(transform.InverseTransformPoint(cp.position));
                 points.Add(transform.InverseTransformPoint(part.targetTransform.position));
 
-                part.transform.localPosition = GetBezierPoint(effectivePartFactor, points);
+                part.transform.localPosition = GetBezierPoint(motionTime, points);
             }
 
             // Animate All Annotations if present
@@ -468,12 +508,12 @@ public class ExplodedView : MonoBehaviour
                 {
                     if (anno != null)
                     {
-                        // Push Global Settings as non-destructive overrides
+                        // Use current settings (which might have been pushed from parent)
                         anno.globalVisibility = showAnnotations;
                         anno.globalScaleMultiplier = globalAnnotationScale;
                         anno.globalPositionOffset = globalAnnotationOffset;
                         
-                        anno.Animate(effectivePartFactor);
+                        anno.Animate(motionTime);
                     }
                 }
             }

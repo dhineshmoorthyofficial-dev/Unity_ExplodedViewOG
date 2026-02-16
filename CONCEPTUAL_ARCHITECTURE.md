@@ -30,6 +30,26 @@ graph TD
     
     Wheel -->|Controls| Tire[Part: Tire]
     Wheel -->|Controls| Rim[Part: Rim]
+
+---
+
+## 2. Leaf vs. Branch: The Fundamental Distinction
+
+Understanding the difference between a **Leaf** and a **Branch** is key to mastering complex orchestrations.
+
+*   **Leaf (Part)**: An actual 3D mesh (Renderer). It is at the end of the chain. It moves from Home to its Target.
+*   **Branch (Sub-Manager)**: A GameObject that has its own `ExplodedView` component. It acts as a container.
+
+### Why it matters
+*   **Leaves** are animated by the `Explosion Factor` of their *direct* parent.
+*   **Branches** are sequenced by the `Orchestration Factor` of their *direct* parent.
+
+```mermaid
+graph LR
+    A[Manager A] -->|Explosion Factor| Leaf1[Leaf: Screw]
+    A -->|Orchestration Factor| B[Manager B]
+    B -->|Explosion Factor| Leaf2[Leaf: Piston]
+```
 ```
 
 ---
@@ -38,6 +58,23 @@ graph TD
 
 The entire system runs on a single number: **The Explosion Factor**.
 This is a simple value between `0.0` (Closed) and `1.0` (Open).
+
+### Orchestration Flow
+When a Master Manager drives a Sub-Manager, it follows this orchestration flow:
+
+```mermaid
+sequenceDiagram
+    participant M as Master Manager
+    participant S as Sub-Manager
+    participant P as Part (Leaf)
+
+    M->>M: Calculate Local Explosion Factor
+    M->>P: Animate Local Parts (0.0 - 1.0)
+    
+    M->>M: Calculate Orchestration Time Slice
+    M->>S: Set Sub-Manager Explosion Factor
+    S->>S: Process nested children...
+```
 
 ### How Movement is Calculated
 When you drag the slider, the tool performs a mathematical calculation called **Linear Interpolation (Lerp)**.
@@ -109,3 +146,15 @@ Here is the exact lifecycle of the system from the moment you click "Setup":
 *   **You don't move parts.** You change a value from 0 to 1.
 *   **The system doesn't know "Top" from "Bottom".** It just knows "Parent" and "Child".
 *   **Complexity is handled by structure.** If an explosion looks too messy, break it down into smaller Sub-Managers. The tool loves structure.
+
+---
+
+## 5. Performance Guidelines (AAA Standards)
+
+For high-fidelity models with thousands of parts, follow these guidelines to maintain editor and runtime performance:
+
+### Layering & Optimization
+*   **Use Sub-Managers for Groups**: Don't put 500 parts under one manager. Group them into assemblies (e.g., "Left Wing", "Front Landing Gear") with their own sub-managers.
+*   **Static vs. Dynamic Batching**: Since parts move, they cannot be part of Unity's Static Batching. Ensure your shaders and materials are optimized for GPU Instancing where possible.
+*   **Debug Overlays**: Keep **Heatmap** off unless active debugging. These perform recursive calculations every frame.
+*   **Curve Fidelity**: The **Curved Mode** uses Bézier calculations. For simple movements, prefer **Spherical** or **Target** modes to save CPU cycles.

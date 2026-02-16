@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-02-16
+### Added
+- **Motion Quality Controls**: Per-part animation curves and delay settings for fine-tuned motion control.
+- **Global Motion Curve**: Apply a master easing curve to all parts in a manager for consistent animation feel.
+- **Hierarchical Debug Synchronization**: "Apply Globally" toggle propagates debug and annotation settings down the entire hierarchy.
+- **Local Debug Overlays**: Individual sub-managers can now toggle Distance Heatmap and Path Length independently.
+- **Consolidated Visual UI**: Grouped all visualization settings into a single "Visual Fidelity & Debugging" block for cleaner inspector layout.
+- **Persistent SerializedObject Cache**: Fixed curve selection issues in nested sub-manager UI by implementing editor-side caching.
+
+### Changed
+- **Debug UI Organization**: Moved debug lines, heatmap, and path length controls into a unified section with global override support.
+- **Annotation Propagation**: Annotation settings now respect the hierarchical override system when "Apply Globally" is enabled.
+
+### Removed
+- **Collision Warning Feature**: Removed collision detection overlay as it was not providing expected results.
+
+### Fixed
+- **Curve Selection Bug**: Animation curves in sub-manager lists are now fully editable without losing focus.
+- **Duplicate Field Definitions**: Cleaned up duplicate `drawDebugLines` and `debugLineColor` declarations.
+- **Heatmap Rendering**: Fixed internal logic to correctly use propagated settings instead of local manager settings.
+
 ## [1.1.0] - 2026-01-30
 ### Added
 - **Curved Explosion Mode**: New mode allowing parts to move along custom Bézier paths.

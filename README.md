@@ -8,9 +8,11 @@ Welcome to the **Exploded View Tool**! This Unity tool allows you to easily crea
 *   **Spherical Explosion**: Move all parts straight out from a center point (like a "big bang").
 *   **Targeted Explosion**: Manually tell each part exactly where to go for precise control.
 *   **Curved Explosion**: Move parts along custom Bézier paths for organic, cinematic reveals.
+*   **Motion Quality Controls**: Fine-tune animations with per-part curves and delays, plus a global motion curve.
 *   **Orchestration**: Sequence complex nested objects (e.g., Unpack the Engine -> Then explode the Pistions).
 *   **Sequential Animation**: Automate "Move then Open" effects with a single click.
 *   **Nested Groups**: Handle complex objects with "parts inside parts" easily.
+*   **Debug Overlays**: Visualize movement with heatmaps, path lengths, and debug lines (global or per-group).
 *   **Non-Destructive**: Your original object layout is always safe. You can reset at any time.
 
 ---
@@ -62,6 +64,18 @@ Best for: Organic movements, cinematic reveals, or complex fly-throughs.
 
 ---
 
+## Mode Decision Table
+
+| Mode | Best For... | Movement Complexity | Performance |
+| :--- | :--- | :--- | :--- |
+| **Spherical** | Quick previews, debris, uniform expansion. | Low (Linear) | Ultra High |
+| **Target** | Technical diagrams, cabling, specific landing spots. | Medium (Linear) | High |
+| **Curved** | Organic reveals, cinematics, avoiding obstacles. | High (Interpolated) | Medium |
+| **Orchestrated** | Multi-stage assemblies (e.g., Engines, Gearboxes). | Very High (Sequenced) | High |
+| **Sequential** | "Unpack then Deploy" logic (Case opens, then parts move). | High (Automated) | High |
+
+---
+
 ## Orchestration (New!)
 
 For complex mechanical objects, simply moving everything at once isn't enough. You need specific things to happen in a specific order. The Orchestration system allows you to control this sequence.
@@ -93,12 +107,43 @@ Often, you want a sub-assembly to move into position *before* it starts explodin
 
 ---
 
+## Motion Quality Controls
+
+Fine-tune the animation feel of your explosions with per-part and global motion controls.
+
+### Per-Part Controls
+Each part has its own motion settings accessible in the Parts list:
+*   **Motion Curve**: Custom animation curve for easing (e.g., ease-in, bounce, overshoot).
+*   **Delay**: Start this part's movement later in the sequence (0.0 = immediate, 0.5 = halfway through).
+
+### Global Motion Curve
+Apply a master easing curve to all parts in a manager:
+1.  Expand the **Global Motion** section in the Inspector.
+2.  Edit the **Global Motion Curve** to apply consistent easing to all parts.
+3.  This curve is applied *after* the per-part curve, allowing for layered control.
+
+---
+
+## Debug Overlays
+
+Visualize and debug your explosion setup with built-in Scene view overlays.
+
+### Available Overlays
+*   **Draw Path Lines**: Shows the movement path for each part (yellow lines by default).
+*   **Distance Heatmap**: Color-codes parts based on how far they move (blue = short, red = long).
+*   **Path Lengths**: Displays numeric distance labels for each part.
+
+### Global vs. Local Control
+*   **Apply Globally**: Enable this on the root manager to push debug settings to all sub-managers.
+*   **Local Control**: When global mode is off, each sub-manager can toggle its own debug overlays independently.
+
+---
+
 ## Advanced Features
 
 *   **Sub-Managers (Nested Groups)**: If you have a car engine, you can have one ExplodedView on the "Engine" and another on the "Piston". Exploding the engine will move the whole piston, but you can *also* explode the piston itself separately!
-*   **Deep Recursion**: driving the root Orchestrator will drive the entire tree recursively. You can animate a massively complex assembly with a single slider.
-*   **Auto-Grouping**: Enable `Auto Group Children` to automatically detect sub-asssemblies and add scripts to them.
-*   **Per-Manager Debug Lines**: Each manager can independently show or hide its movement lines in the Scene view.
+*   **Deep Recursion**: Driving the root Orchestrator will drive the entire tree recursively. You can animate a massively complex assembly with a single slider.
+*   **Auto-Grouping**: Enable `Auto Group Children` to automatically detect sub-assemblies and add scripts to them.
 
 ---
 

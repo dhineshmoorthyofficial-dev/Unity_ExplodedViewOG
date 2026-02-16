@@ -22,11 +22,15 @@ public class ExplodedViewEditor : Editor
     private SerializedProperty showAnnotations;
     private SerializedProperty globalAnnotationScale;
     private SerializedProperty globalAnnotationOffset;
+    private SerializedProperty globalMotionCurve;
     // We won't use the SerializedProperty for subManagers logic specifically, 
     // because we want to traverse the tree recursively via direct references.
 
     // Key: InstanceID, Value: IsExpanded. Static to persist between selections.
     private static Dictionary<int, bool> foldoutStates = new Dictionary<int, bool>();
+    
+    // Cache for SerializedObjects of sub-managers to ensure persistent editing (e.g. for AnimationCurves)
+    private Dictionary<int, SerializedObject> soCache = new Dictionary<int, SerializedObject>();
 
     private void OnEnable()
     {
@@ -79,6 +83,19 @@ public class ExplodedViewEditor : Editor
         showAnnotations = serializedObject.FindProperty("showAnnotations");
         globalAnnotationScale = serializedObject.FindProperty("globalAnnotationScale");
         globalAnnotationOffset = serializedObject.FindProperty("globalAnnotationOffset");
+        globalMotionCurve = serializedObject.FindProperty("globalMotionCurve");
+    }
+
+    private void OnDisable()
+    {
+        if (soCache != null)
+        {
+            foreach (var so in soCache.Values)
+            {
+                if (so != null) so.Dispose();
+            }
+            soCache.Clear();
+        }
     }
 
     public override void OnInspectorGUI()
@@ -108,6 +125,7 @@ public class ExplodedViewEditor : Editor
         }
 
         EditorGUILayout.PropertyField(sensitivity);
+        EditorGUILayout.PropertyField(globalMotionCurve);
 
         if ((ExplodedView.ExplosionMode)explosionMode.enumValueIndex == ExplodedView.ExplosionMode.Spherical)
         {
@@ -159,16 +177,29 @@ public class ExplodedViewEditor : Editor
             EditorGUILayout.HelpBox("Parts Order: Top explodes first (0.0), bottom last (1.0). Controls local sequence.", MessageType.Info);
         }
 
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        EditorGUILayout.LabelField("Visual Fidelity & Debugging", EditorStyles.boldLabel);
+        
+        // Debug Overlays
+        EditorGUILayout.LabelField("Debug Overlays", EditorStyles.miniBoldLabel);
         EditorGUILayout.BeginHorizontal();
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("drawDebugLines"), new GUIContent("Draw Debug Lines"));
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("drawDebugLines"), new GUIContent("Draw Path Lines"));
         EditorGUILayout.PropertyField(serializedObject.FindProperty("debugLineColor"), GUIContent.none, GUILayout.Width(50));
         EditorGUILayout.EndHorizontal();
+        
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("showHeatmap"), new GUIContent("Distance Heatmap"));
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("showPathLength"), new GUIContent("Path Lengths"));
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("applyDebugToChildren"), new GUIContent("Apply Globally"));
 
-        EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Global Annotation Settings", EditorStyles.boldLabel);
+        EditorGUILayout.Space(5);
+        
+        // Annotations
+        EditorGUILayout.LabelField("Annotation Overrides", EditorStyles.miniBoldLabel);
         EditorGUILayout.PropertyField(showAnnotations, new GUIContent("Show Annotations"));
         EditorGUILayout.PropertyField(globalAnnotationScale, new GUIContent("Global Scale"));
         EditorGUILayout.PropertyField(globalAnnotationOffset, new GUIContent("Global Offset"));
+        
+        EditorGUILayout.EndVertical();
 
         EditorGUILayout.Space();
 
@@ -307,6 +338,14 @@ public class ExplodedViewEditor : Editor
                 }
 
                 bool newOrchestrateParts = EditorGUILayout.Toggle("Orchestrator(Parts)", sub.orchestrateParts);
+                
+                // Use cached SO for sub-manager's local global curve
+                int subID = sub.GetInstanceID();
+                if (!soCache.ContainsKey(subID)) soCache[subID] = new SerializedObject(sub);
+                SerializedObject cachedSubSO = soCache[subID];
+                cachedSubSO.Update();
+                EditorGUILayout.PropertyField(cachedSubSO.FindProperty("globalMotionCurve"), new GUIContent("Local Global Curve"));
+                cachedSubSO.ApplyModifiedProperties();
 
                 if (EditorGUI.EndChangeCheck())
                 {
@@ -326,13 +365,30 @@ public class ExplodedViewEditor : Editor
                     // But usually it does for nested editors. We can try to force it via SceneView or similar if needed.
                 }
 
+                // Sub-Manager Debug Settings
                 EditorGUI.BeginChangeCheck();
+                
+                // Determine if we should disable local controls because the parent/root is overriding them
+                bool isRootOverriding = ((ExplodedView)target).applyDebugToChildren && ((ExplodedView)target) != sub;
+                
+                EditorGUI.BeginDisabledGroup(isRootOverriding);
                 bool subDrawLines = EditorGUILayout.Toggle("Draw Lines", sub.drawDebugLines);
+                bool subShowHeatmap = EditorGUILayout.Toggle("Heatmap", sub.showHeatmap);
+                bool subShowPathLength = EditorGUILayout.Toggle("Path Length", sub.showPathLength);
+                EditorGUI.EndDisabledGroup();
+
                 if (EditorGUI.EndChangeCheck())
                 {
-                    Undo.RecordObject(sub, "Toggle Sub-Manager Debug Lines");
+                    Undo.RecordObject(sub, "Toggle Sub-Manager Debug Settings");
                     sub.drawDebugLines = subDrawLines;
+                    sub.showHeatmap = subShowHeatmap;
+                    sub.showPathLength = subShowPathLength;
                     EditorUtility.SetDirty(sub);
+                }
+                
+                if (isRootOverriding)
+                {
+                    EditorGUILayout.HelpBox("Overridden by Global Settings", MessageType.None);
                 }
 
                 // NEW: Show Target Reference (Endpoint) from the parent's perspective
@@ -459,6 +515,25 @@ public class ExplodedViewEditor : Editor
             if (GUILayout.Button("Select", GUILayout.Width(50))) Selection.activeGameObject = part.transform.gameObject;
             EditorGUILayout.EndHorizontal();
 
+            // Use persistent SerializedObject for parts to fix "can't select curve" issue
+            int managerID = manager.GetInstanceID();
+            if (!soCache.ContainsKey(managerID)) soCache[managerID] = new SerializedObject(manager);
+            SerializedObject partSO = soCache[managerID];
+            partSO.Update();
+
+            // Motion Quality Controls (Show for all modes)
+            EditorGUI.indentLevel++;
+            var partsProp = partSO.FindProperty("parts");
+            int partIndex = manager.parts.IndexOf(part);
+            if (partIndex >= 0)
+            {
+                var elementProp = partsProp.GetArrayElementAtIndex(partIndex);
+                EditorGUILayout.PropertyField(elementProp.FindPropertyRelative("motionCurve"));
+                EditorGUILayout.PropertyField(elementProp.FindPropertyRelative("delay"));
+                partSO.ApplyModifiedProperties();
+            }
+            EditorGUI.indentLevel--;
+
             if (isParentInTargetMode)
             {
                 EditorGUI.BeginChangeCheck();
@@ -470,7 +545,7 @@ public class ExplodedViewEditor : Editor
                     EditorUtility.SetDirty(manager);
                 }
 
-                // NEW: Control Points List for Leaf Parts
+                // Control Points List for Leaf Parts
                 if (manager.explosionMode == ExplodedView.ExplosionMode.Curved)
                 {
                     EditorGUI.indentLevel++;
@@ -518,16 +593,67 @@ public class ExplodedViewEditor : Editor
         ExplodedView manager = (ExplodedView)target;
         if (manager == null) return;
 
-        DrawDebugLinesRecursive(manager);
+        DrawDebugLinesRecursive(manager, manager);
+        DrawDebugOverlays(manager, manager);
     }
 
-    private void DrawDebugLinesRecursive(ExplodedView manager)
+    private void DrawDebugOverlays(ExplodedView manager, ExplodedView root)
+    {
+        if (manager == null) return;
+        
+        bool showHeatmap = root.applyDebugToChildren ? root.showHeatmap : manager.showHeatmap;
+        bool showPathLength = root.applyDebugToChildren ? root.showPathLength : manager.showPathLength;
+
+        // 1. Heatmap & Path Length
+        if (showHeatmap || showPathLength)
+        {
+            float maxDist = manager.sensitivity * 2f; // Reasonable cap for normalization
+            foreach (var part in manager.parts)
+            {
+                if (part == null || part.transform == null) continue;
+
+                float dist = Vector3.Distance(part.originalLocalPosition, part.transform.localPosition);
+                
+                if (showHeatmap)
+                {
+                    float t = Mathf.Clamp01(dist / maxDist);
+                    Color heatmapColor = Color.Lerp(Color.blue, Color.red, t);
+                    heatmapColor.a = 0.5f;
+                    
+                    Handles.color = heatmapColor;
+                    Renderer r = part.transform.GetComponent<Renderer>();
+                    if (r != null)
+                    {
+                        Handles.DrawWireCube(r.bounds.center, r.bounds.size);
+                    }
+                }
+
+                if (showPathLength)
+                {
+                    Handles.Label(part.transform.position, $"Dist: {dist:F2}");
+                }
+            }
+        }
+
+        // Recurse to sub-managers
+        if (manager.subManagers != null)
+        {
+            foreach (var sub in manager.subManagers)
+            {
+                if (sub != null) DrawDebugOverlays(sub, root);
+            }
+        }
+    }
+
+    private void DrawDebugLinesRecursive(ExplodedView manager, ExplodedView root)
     {
         if (manager == null) return;
 
-        if (manager.drawDebugLines)
+        bool drawLines = root.applyDebugToChildren ? root.drawDebugLines : manager.drawDebugLines;
+
+        if (drawLines)
         {
-            Handles.color = manager.debugLineColor;
+            Handles.color = root.applyDebugToChildren ? root.debugLineColor : manager.debugLineColor;
             foreach (var part in manager.parts)
             {
                 if (part == null || part.transform == null) continue;
@@ -596,7 +722,7 @@ public class ExplodedViewEditor : Editor
         {
             foreach (var sub in manager.subManagers)
             {
-                if (sub != null) DrawDebugLinesRecursive(sub);
+                if (sub != null) DrawDebugLinesRecursive(sub, root);
             }
         }
     }
