@@ -1,6 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+ 
+
+## [1.4.0] - 2026-02-23
+### Added
+- **Performance Optimization**: Added "Only Move Immediate Children" option to significantly speed up setup for complex hierarchies.
+- **Shallow Discovery Mode**: Optional mode that skips deep renderer searches, preventing the creation of excessive target objects in large models.
+- **Optimization Tooltips**: Added helpful documentation within the inspector to guide users on when to use performance mode.
+- **Smart Performance Warning**: Added a confirmation dialog when setting up large hierarchies (>100 objects) to prevent unintended performance issues, suggesting the use of shallow discovery.
+
+### Added
+- **Stepper Buttons**: Added left and right arrow buttons next to explosion and orchestration sliders for precise incremental control.
+- **Smart Stepping Logic**: Arrow buttons now intelligently "snap" to part or group boundaries when orchestration is enabled, allowing for sequential part-by-part navigation.
+- **Improved UI Feedback**: Button clicks now correctly signal changes to Unity's undo system and trigger scene repaints.
+- **Flexible Helper Methods**: Refactored internal editor API to support dynamic step calculation for both `SerializedProperty` and direct `float` types.
 
 ## [1.2.0] - 2026-02-16
 ### Added

@@ -16,6 +16,7 @@ public class ExplodedView : MonoBehaviour
     public bool useHierarchicalCenter = false;
     public bool useBoundsCenter = false;
     public bool autoGroupChildren = false;
+    public bool onlyMoveImmediateChildren = false;
 
     [System.Serializable]
     public class PartData
@@ -190,22 +191,30 @@ public class ExplodedView : MonoBehaviour
         {
             bool isSignificant = false;
 
-            // If child has another manager, it's a "significant part" (a group)
-            ExplodedView childManager = child.GetComponent<ExplodedView>();
-            if (childManager != null)
+            // Option: Only move top-level children (ignores deep search for speed)
+            if (onlyMoveImmediateChildren && current == transform)
             {
                 isSignificant = true;
-                subManagers.Add(childManager);
-                
-                // Propagate mode to children
-                childManager.explosionMode = this.explosionMode;
-                childManager.useBoundsCenter = this.useBoundsCenter;
-                childManager.SetupExplosion();
             }
-            // Else if it has a renderer, it's a "significant part" (a leaf mesh)
-            else if (child.GetComponent<Renderer>() != null)
+            else
             {
-                isSignificant = true;
+                // If child has another manager, it's a "significant part" (a group)
+                ExplodedView childManager = child.GetComponent<ExplodedView>();
+                if (childManager != null)
+                {
+                    isSignificant = true;
+                    subManagers.Add(childManager);
+                    
+                    // Propagate mode to children
+                    childManager.explosionMode = this.explosionMode;
+                    childManager.useBoundsCenter = this.useBoundsCenter;
+                    childManager.SetupExplosion();
+                }
+                // Else if it has a renderer, it's a "significant part" (a leaf mesh)
+                else if (child.GetComponent<Renderer>() != null)
+                {
+                    isSignificant = true;
+                }
             }
 
             if (isSignificant)

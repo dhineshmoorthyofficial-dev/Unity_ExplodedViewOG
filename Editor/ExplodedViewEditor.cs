@@ -116,9 +116,20 @@ public class ExplodedViewEditor : Editor
             }
         }
 
-        EditorGUI.BeginDisabledGroup(isControlledByParent);
-        EditorGUILayout.PropertyField(explosionFactor);
-        EditorGUI.EndDisabledGroup();
+        int rootStepCount = 0;
+        if (component.orchestrateSubManagers && component.linkExplosionFactors)
+        {
+            if (component.separateMovementAndOrchestration) 
+                rootStepCount = (component.orchestrateParts ? component.parts.Count : 1) + component.subManagers.Count;
+            else 
+                rootStepCount = Mathf.Max(component.orchestrateParts ? component.parts.Count : 1, component.subManagers.Count);
+        }
+        else if (component.orchestrateParts)
+        {
+            rootStepCount = component.parts.Count;
+        }
+
+        DrawFactorWithArrows("Explosion Factor", explosionFactor, rootStepCount);
         if (isControlledByParent)
         {
             EditorGUILayout.HelpBox("Controlled by Parent Orchestrator", MessageType.Info);
@@ -135,6 +146,7 @@ public class ExplodedViewEditor : Editor
         }
         
         EditorGUILayout.PropertyField(autoGroupChildren);
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("onlyMoveImmediateChildren"), new GUIContent("Only Move Immediate Children", "If enabled, only immediate children will be moved, ignoring deep hierarchies. Significant performance boost for complex models."));
         EditorGUILayout.PropertyField(serializedObject.FindProperty("autoCreateTargets"), new GUIContent("Auto-Create Targets"));
         
         EditorGUILayout.Space();
@@ -150,8 +162,10 @@ public class ExplodedViewEditor : Editor
             // If linked, show the explosion factor is driving it.
             // If NOT linked, we enable the slider (unless controlled by parent)
             
-            EditorGUI.BeginDisabledGroup(isControlledByParent || isLinked);
-            EditorGUILayout.PropertyField(orchestrationFactor, new GUIContent("Orchestration Factor"));
+            bool disabled = isControlledByParent || isLinked;
+            EditorGUI.BeginDisabledGroup(disabled);
+            int orchStepCount = component.orchestrateSubManagers ? component.subManagers.Count : 0;
+            DrawFactorWithArrows("Orchestration Factor", orchestrationFactor, orchStepCount);
             EditorGUI.EndDisabledGroup();
             
             if (isLinked)
@@ -216,7 +230,8 @@ public class ExplodedViewEditor : Editor
         {
             foreach (var t in targets)
             {
-                (t as ExplodedView).SetupExplosion();
+                ExplodedView ev = t as ExplodedView;
+                if (ev != null) PerformSetupWithWarning(ev);
             }
         }
 
@@ -317,7 +332,8 @@ public class ExplodedViewEditor : Editor
                 }
                 
                 EditorGUI.BeginDisabledGroup(manager.orchestrateSubManagers);
-                float newFactor = EditorGUILayout.Slider("Explosion", sub.explosionFactor, 0f, 1f);
+                int subExplosionStepCount = sub.orchestrateParts ? sub.parts.Count : 0;
+                float newFactor = DrawFactorWithArrows("Explosion", sub.explosionFactor, subExplosionStepCount);
                 EditorGUI.EndDisabledGroup();
                 
                 float newSensitivity = EditorGUILayout.FloatField("Sensitivity", sub.sensitivity);
@@ -332,7 +348,8 @@ public class ExplodedViewEditor : Editor
                     EditorGUI.indentLevel++;
                     newSeparate = EditorGUILayout.Toggle("Sequential Mode", sub.separateMovementAndOrchestration);
                     EditorGUI.BeginDisabledGroup(manager.orchestrateSubManagers);
-                    newOrchestrationFactor = EditorGUILayout.Slider("Seq Factor", sub.orchestrationFactor, 0f, 1f);
+                    int subOrchStepCount = sub.orchestrateSubManagers ? sub.subManagers.Count : 0;
+                    newOrchestrationFactor = DrawFactorWithArrows("Seq Factor", sub.orchestrationFactor, subOrchStepCount);
                     EditorGUI.EndDisabledGroup();
                     EditorGUI.indentLevel--;
                 }
@@ -725,6 +742,91 @@ public class ExplodedViewEditor : Editor
                 if (sub != null) DrawDebugLinesRecursive(sub, root);
             }
         }
+    }
+
+    private void DrawFactorWithArrows(string label, SerializedProperty prop, int stepCount = 0)
+    {
+        EditorGUILayout.BeginHorizontal();
+        EditorGUILayout.PropertyField(prop, new GUIContent(label));
+        
+        if (GUILayout.Button("<", GUILayout.Width(20)))
+        {
+            prop.floatValue = CalculateNextStep(prop.floatValue, stepCount, false);
+        }
+        if (GUILayout.Button(">", GUILayout.Width(20)))
+        {
+            prop.floatValue = CalculateNextStep(prop.floatValue, stepCount, true);
+        }
+        EditorGUILayout.EndHorizontal();
+    }
+
+    private float DrawFactorWithArrows(string label, float value, int stepCount = 0)
+    {
+        EditorGUILayout.BeginHorizontal();
+        float newValue = EditorGUILayout.Slider(label, value, 0f, 1f);
+
+        if (GUILayout.Button("<", GUILayout.Width(20)))
+        {
+            newValue = CalculateNextStep(value, stepCount, false);
+            GUI.changed = true;
+        }
+        if (GUILayout.Button(">", GUILayout.Width(20)))
+        {
+            newValue = CalculateNextStep(value, stepCount, true);
+            GUI.changed = true;
+        }
+        EditorGUILayout.EndHorizontal();
+        return newValue;
+    }
+
+    private float CalculateNextStep(float current, int stepCount, bool increment)
+    {
+        if (stepCount <= 0) return Mathf.Clamp01(current + (increment ? 0.1f : -0.1f));
+
+        float step = 1f / stepCount;
+        if (increment)
+        {
+            // Jump to the next boundary, with a tiny epsilon to handle floating point errors
+            int nextIdx = Mathf.FloorToInt(current / step + 0.001f) + 1;
+            return Mathf.Clamp01(nextIdx * step);
+        }
+        else
+        {
+            // Jump to the previous boundary
+            int prevIdx = Mathf.CeilToInt(current / step - 0.001f) - 1;
+            return Mathf.Clamp01(prevIdx * step);
+        }
+    }
+
+    private void PerformSetupWithWarning(ExplodedView ev)
+    {
+        if (!ev.onlyMoveImmediateChildren)
+        {
+            int totalChildren = GetRecursiveChildCount(ev.transform);
+            if (totalChildren > 100)
+            {
+                if (!EditorUtility.DisplayDialog("Large Hierarchy Detected",
+                    $"This object has {totalChildren} sub-objects. Setting up full explosion may take some time.\n\n" +
+                    "Consider enabling 'Only Move Immediate Children' for a significant performance boost.",
+                    "Setup Anyway", "Cancel"))
+                {
+                    return;
+                }
+            }
+        }
+        ev.SetupExplosion();
+    }
+
+    private int GetRecursiveChildCount(Transform parent)
+    {
+        int count = parent.childCount;
+        foreach (Transform child in parent)
+        {
+            count += GetRecursiveChildCount(child);
+            // Early exit if it's already massive to avoid deep scan delay itself
+            if (count > 500) return count; 
+        }
+        return count;
     }
 
     private Vector3 GetBezierPointWorld(float t, List<Vector3> points)

@@ -1,16 +1,18 @@
 {
   "name": "com.dhinesh.explodedview",
   "displayName": "Exploded View",
-  "version": "1.0.0",
+  "version": "1.4.0",
   "unity": "2021.3",
   "unityRelease": "0f1",
-  "description": "A tool for creating exploded views of GameObjects.",
+  "description": "A high-performance tool for creating and orchestrating complex exploded views of GameObjects.",
   "keywords": [
     "exploded",
     "view",
     "utility",
     "visualization",
-    "animation"
+    "animation",
+    "performance",
+    "optimization"
   ],
   "author": {
     "name": "Dhinesh Moorthy",

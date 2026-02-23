@@ -144,6 +144,21 @@ Visualize and debug your explosion setup with built-in Scene view overlays.
 *   **Sub-Managers (Nested Groups)**: If you have a car engine, you can have one ExplodedView on the "Engine" and another on the "Piston". Exploding the engine will move the whole piston, but you can *also* explode the piston itself separately!
 *   **Deep Recursion**: Driving the root Orchestrator will drive the entire tree recursively. You can animate a massively complex assembly with a single slider.
 *   **Auto-Grouping**: Enable `Auto Group Children` to automatically detect sub-assemblies and add scripts to them.
+*   **Performance Optimization**: Enable `Only Move Immediate Children` for complex models to bypass deep hierarchy traversal and speed up setup.
+
+---
+
+## Performance Optimization
+
+When working with very large CAD models or complex assemblies (hundreds of child objects), the initial setup can become slow as the tool scans every single renderer.
+
+### Only Move Immediate Children
+If your model is "pre-grouped" (e.g., all engine parts are in one folder, all body parts in another), you can toggle **Only Move Immediate Children** on the root object.
+*   **Effect**: The tool will only create movement data for top-level children.
+*   **Benefit**: Massive reduction in setup time and number of target objects created.
+*   **Usage**: Recommended for complex models where you only need high-level "exploded" views rather than every nut and bolt moving independently.
+
+---
 
 ---
 
