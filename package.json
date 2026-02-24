@@ -1,7 +1,7 @@
 {
   "name": "com.dhinesh.explodedview",
   "displayName": "Exploded View",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "unity": "2021.3",
   "unityRelease": "0f1",
   "description": "A high-performance tool for creating and orchestrating complex exploded views of GameObjects.",

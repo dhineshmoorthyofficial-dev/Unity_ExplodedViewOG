@@ -139,6 +139,26 @@ Visualize and debug your explosion setup with built-in Scene view overlays.
 
 ---
 
+## Advanced Annotations (New in 1.5.0!)
+
+The annotation system has been upgraded to support complex visual guidance beyond simple labels.
+
+### 1. Adjustable Start Point
+Lines no longer have to point to the part's pivot. Use the **Line Start Offset** handle in the Scene View to anchor the line to any specific detail on your model.
+
+### 2. Multi-Point Paths
+You can add `Intermediate Points` to create bent or curved annotation lines. This is perfect for avoiding visual clutter or guiding the viewer's eye around complex geometry.
+
+### 3. Sequential Animation
+Annotation lines grow segment-by-segment from the part to the label. This "organic" growth is automatically synchronized with the main explosion animation.
+
+### 4. Interactive Path Design
+Select any annotation to see interactive handles for the start point and all intermediate points. Drag them in the Scene View to perfectly align your callouts.
+
+---
+
+---
+
 ## Advanced Features
 
 *   **Sub-Managers (Nested Groups)**: If you have a car engine, you can have one ExplodedView on the "Engine" and another on the "Piston". Exploding the engine will move the whole piston, but you can *also* explode the piston itself separately!

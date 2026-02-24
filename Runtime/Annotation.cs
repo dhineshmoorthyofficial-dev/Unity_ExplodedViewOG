@@ -21,7 +21,9 @@ public class Annotation : MonoBehaviour
     public float canvasScale = 0.01f;
     public bool autoCreateUI = true;
 
-    [Header("Advanced Effects")]
+    [Header("Line Path")]
+    public Vector3 lineStartOffset = Vector3.zero;
+    public System.Collections.Generic.List<Vector3> intermediatePoints = new System.Collections.Generic.List<Vector3>();
     public LineAnchor lineAnchor = LineAnchor.BottomLeft;
     public enum LineAnchor { Center, BottomLeft, BottomRight, TopLeft, TopRight }
     public bool showLine = true;
@@ -166,17 +168,48 @@ public class Annotation : MonoBehaviour
     {
         if (lineRenderer == null) return;
         
-        // Use currentAlpha as the source of truth for visibility to avoid 1-frame delay
         bool isVisible = showLine && globalVisibility && currentAlpha > 0;
         lineRenderer.enabled = isVisible;
 
         if (isVisible)
         {
-            lineRenderer.SetPosition(0, transform.position);
+            // Gather all path points in world space
+            System.Collections.Generic.List<Vector3> pathPoints = new System.Collections.Generic.List<Vector3>();
             
-            Vector3 anchorPos = GetTargetAnchorPosition();
-            Vector3 targetPos = Vector3.Lerp(transform.position, anchorPos, lineGrowth);
-            lineRenderer.SetPosition(1, targetPos);
+            // 1. Start Point (with offset)
+            pathPoints.Add(transform.TransformPoint(lineStartOffset));
+
+            // 2. Intermediate Points
+            foreach (var pt in intermediatePoints)
+            {
+                pathPoints.Add(transform.TransformPoint(pt));
+            }
+
+            // 3. End Point (Label Anchor)
+            pathPoints.Add(GetTargetAnchorPosition());
+
+            // Calculate active segments based on lineGrowth
+            // Growth is sequential: 0.0 means only start point, 1.0 means all points.
+            int segments = pathPoints.Count - 1;
+            float totalGrowth = lineGrowth * segments;
+
+            System.Collections.Generic.List<Vector3> activePoints = new System.Collections.Generic.List<Vector3>();
+            activePoints.Add(pathPoints[0]);
+
+            for (int i = 0; i < segments; i++)
+            {
+                float segmentFactor = Mathf.Clamp01(totalGrowth - i);
+                if (segmentFactor > 0)
+                {
+                    Vector3 p = Vector3.Lerp(pathPoints[i], pathPoints[i + 1], segmentFactor);
+                    activePoints.Add(p);
+                    if (segmentFactor < 1.0f) break; // Optimization: stop if segment is partially grown
+                }
+                else break;
+            }
+
+            lineRenderer.positionCount = activePoints.Count;
+            lineRenderer.SetPositions(activePoints.ToArray());
             
             lineRenderer.startWidth = lineWidth;
             lineRenderer.endWidth = lineWidth;
@@ -258,6 +291,7 @@ public class Annotation : MonoBehaviour
 
         if (lineRenderer != null)
         {
+            lineRenderer.useWorldSpace = true; // Ensure world space is used for multi-point logic
             if (lineMaterial != null && lineRenderer.sharedMaterial != lineMaterial)
             {
                 lineRenderer.sharedMaterial = lineMaterial;

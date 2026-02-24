@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
  
 
+## [1.5.0] - 2026-02-24
+### Added
+- **Adjustable Annotation Start Points**: You can now shift the line starting position from the part's pivot using the `Line Start Offset` field.
+- **Multi-Point Annotation Paths**: Added support for `Intermediate Points` in annotations, allowing for complex, multi-segment line paths.
+- **Sequential Line Growth**: Annotation lines now grow segment-by-segment from the part to the label, perfectly synchronized with the explosion factor.
+- **Interactive Path Editing**: Added Scene View handles for "Line Start" and all intermediate points for intuitive path design.
+
 ## [1.4.0] - 2026-02-23
 ### Added
 - **Performance Optimization**: Added "Only Move Immediate Children" option to significantly speed up setup for complex hierarchies.
