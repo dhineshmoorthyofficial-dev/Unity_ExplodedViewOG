@@ -75,6 +75,29 @@ public class ExplodedView : MonoBehaviour
     public bool showAnnotations = true;
     public float globalAnnotationScale = 1.0f;
     public Vector3 globalAnnotationOffset = Vector3.zero;
+    public Transform annotationControlPoint;
+
+    [Header("Master Annotation Overrides")]
+    public bool overrideLineSettings = false;
+    public Color masterLineColor = Color.white;
+    public float masterLineWidth = 0.01f;
+
+    public bool overrideFadeSettings = false;
+    public bool masterUseFadeIn = true;
+    public float masterFadeInStart = 0.2f;
+    public float masterFadeInEnd = 0.4f;
+    public bool masterUseFadeOut = true;
+    public float masterFadeOutStart = 0.7f;
+    public float masterFadeOutEnd = 0.9f;
+
+    public bool overrideVisualSettings = false;
+    public bool masterLookAtCamera = true;
+
+    public bool overrideUISettings = false;
+    public Color masterBackgroundColor = new Color(0, 0, 0, 0.5f);
+    public Color masterTextColor = Color.white;
+    public float masterFontSize = 36f;
+    public Vector2 masterBGSize = new Vector2(250, 70);
 
     private void OnEnable()
     {
@@ -189,6 +212,9 @@ public class ExplodedView : MonoBehaviour
     {
         foreach (Transform child in current)
         {
+            // Ignore internal containers
+            if (child.name == "ExplosionTargets") continue;
+
             bool isSignificant = false;
 
             // Option: Only move top-level children (ignores deep search for speed)
@@ -331,8 +357,8 @@ public class ExplodedView : MonoBehaviour
                 Vector3 start = part.originalLocalPosition;
                 Vector3 end = part.targetTransform.localPosition;
                 Vector3 linearMid = Vector3.Lerp(start, end, ratio);
-                // Very subtle default arc offset (5% of sensitivity)
-                cp.localPosition = part.targetTransform.InverseTransformPoint(linearMid + part.direction * (sensitivity * 0.05f));
+                // Very subtle default arc offset (5% of unit distance)
+                cp.localPosition = part.targetTransform.InverseTransformPoint(linearMid + part.direction * 0.05f);
             }
             part.controlPoints.Add(cp);
         }
@@ -350,6 +376,22 @@ public class ExplodedView : MonoBehaviour
         {
             part.targetTransform = null;
             part.controlPoints.Clear();
+        }
+    }
+
+    public void ReverseParts()
+    {
+        if (parts != null)
+        {
+            parts.Reverse();
+        }
+    }
+
+    public void ReverseSubManagers()
+    {
+        if (subManagers != null)
+        {
+            subManagers.Reverse();
         }
     }
 
@@ -372,8 +414,8 @@ public class ExplodedView : MonoBehaviour
             targetT = targetObj.transform;
             targetT.SetParent(container, false);
             
-            // Initial position: Offset slightly along the direction so it's visible/useful
-            targetT.localPosition = child.localPosition + localDir * sensitivity;
+            // Initial position: Offset by 1 unit along the direction
+            targetT.localPosition = child.localPosition + localDir;
             targetT.localRotation = child.localRotation;
             targetT.localScale = child.localScale;
         }
@@ -383,6 +425,11 @@ public class ExplodedView : MonoBehaviour
 
     private void Update()
     {
+        if (annotationControlPoint != null)
+        {
+            globalAnnotationOffset = annotationControlPoint.localPosition;
+        }
+
         // Calculate Effective Factors based on modes
         float effectiveLocalFactor = explosionFactor;
         float effectiveOrchestrationFactor = orchestrationFactor;
@@ -447,6 +494,26 @@ public class ExplodedView : MonoBehaviour
                     sub.showAnnotations = showAnnotations;
                     sub.globalAnnotationScale = globalAnnotationScale;
                     sub.globalAnnotationOffset = globalAnnotationOffset;
+
+                    // Propagate Overrides
+                    sub.overrideLineSettings = overrideLineSettings;
+                    sub.masterLineColor = masterLineColor;
+                    sub.masterLineWidth = masterLineWidth;
+                    sub.overrideFadeSettings = overrideFadeSettings;
+                    sub.masterUseFadeIn = masterUseFadeIn;
+                    sub.masterFadeInStart = masterFadeInStart;
+                    sub.masterFadeInEnd = masterFadeInEnd;
+                    sub.masterUseFadeOut = masterUseFadeOut;
+                    sub.masterFadeOutStart = masterFadeOutStart;
+                    sub.masterFadeOutEnd = masterFadeOutEnd;
+                    sub.overrideVisualSettings = overrideVisualSettings;
+                    sub.masterLookAtCamera = masterLookAtCamera;
+                    
+                    sub.overrideUISettings = overrideUISettings;
+                    sub.masterBackgroundColor = masterBackgroundColor;
+                    sub.masterTextColor = masterTextColor;
+                    sub.masterFontSize = masterFontSize;
+                    sub.masterBGSize = masterBGSize;
                 }
             }
         }
@@ -497,15 +564,29 @@ public class ExplodedView : MonoBehaviour
             }
             else if (explosionMode == ExplosionMode.Target && part.targetTransform != null)
             {
-                part.transform.localPosition = Vector3.Lerp(part.originalLocalPosition, part.targetTransform.localPosition, motionTime);
+                Vector3 targetDisplacement = part.targetTransform.localPosition - part.originalLocalPosition;
+                part.transform.localPosition = part.originalLocalPosition + targetDisplacement * (motionTime * sensitivity);
             }
             else if (explosionMode == ExplosionMode.Curved && part.targetTransform != null)
             {
                 // Generalized Bezier calculation using control points
                 List<Vector3> points = new List<Vector3>();
                 points.Add(part.originalLocalPosition);
-                foreach (var cp in part.controlPoints) if (cp != null) points.Add(transform.InverseTransformPoint(cp.position));
-                points.Add(transform.InverseTransformPoint(part.targetTransform.position));
+                
+                // Scale displacements of control points and target by sensitivity
+                foreach (var cp in part.controlPoints) 
+                {
+                    if (cp != null) 
+                    {
+                        Vector3 cpLocal = transform.InverseTransformPoint(cp.position);
+                        Vector3 cpDisplacement = (cpLocal - part.originalLocalPosition) * sensitivity;
+                        points.Add(part.originalLocalPosition + cpDisplacement);
+                    }
+                }
+                
+                Vector3 targetLocal = transform.InverseTransformPoint(part.targetTransform.position);
+                Vector3 targetDisplacement = (targetLocal - part.originalLocalPosition) * sensitivity;
+                points.Add(part.originalLocalPosition + targetDisplacement);
 
                 part.transform.localPosition = GetBezierPoint(motionTime, points);
             }
@@ -522,6 +603,28 @@ public class ExplodedView : MonoBehaviour
                         anno.globalScaleMultiplier = globalAnnotationScale;
                         anno.globalPositionOffset = globalAnnotationOffset;
                         
+                        // Apply Overrides
+                        anno.useGlobalLineSettings = overrideLineSettings;
+                        anno.globalLineColor = masterLineColor;
+                        anno.globalLineWidth = masterLineWidth;
+
+                        anno.useGlobalFadeSettings = overrideFadeSettings;
+                        anno.globalUseFadeIn = masterUseFadeIn;
+                        anno.globalFadeInStart = masterFadeInStart;
+                        anno.globalFadeInEnd = masterFadeInEnd;
+                        anno.globalUseFadeOut = masterUseFadeOut;
+                        anno.globalFadeOutStart = masterFadeOutStart;
+                        anno.globalFadeOutEnd = masterFadeOutEnd;
+
+                        anno.useGlobalVisualSettings = overrideVisualSettings;
+                        anno.globalLookAtCamera = masterLookAtCamera;
+
+                        anno.useGlobalUISettings = overrideUISettings;
+                        anno.globalBackgroundColor = masterBackgroundColor;
+                        anno.globalTextColor = masterTextColor;
+                        anno.globalFontSize = masterFontSize;
+                        anno.globalBGSize = masterBGSize;
+
                         anno.Animate(motionTime);
                     }
                 }

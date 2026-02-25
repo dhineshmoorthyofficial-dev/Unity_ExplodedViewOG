@@ -181,6 +181,12 @@ public class ExplodedViewEditor : Editor
             {
                 subManagersList.DoLayoutList();
                 EditorGUILayout.HelpBox("Drag to reorder. Top explodes first (0.0), bottom last (1.0).", MessageType.Info);
+                if (GUILayout.Button("Reverse Sub-Managers List"))
+                {
+                    Undo.RecordObject(component, "Reverse Sub-Managers List");
+                    component.ReverseSubManagers();
+                    EditorUtility.SetDirty(component);
+                }
             }
         }
         
@@ -189,6 +195,12 @@ public class ExplodedViewEditor : Editor
         {
             partsList.DoLayoutList();
             EditorGUILayout.HelpBox("Parts Order: Top explodes first (0.0), bottom last (1.0). Controls local sequence.", MessageType.Info);
+            if (GUILayout.Button("Reverse Parts List"))
+            {
+                Undo.RecordObject(component, "Reverse Parts List");
+                component.ReverseParts();
+                EditorUtility.SetDirty(component);
+            }
         }
 
         EditorGUILayout.BeginVertical(EditorStyles.helpBox);
@@ -213,6 +225,80 @@ public class ExplodedViewEditor : Editor
         EditorGUILayout.PropertyField(globalAnnotationScale, new GUIContent("Global Scale"));
         EditorGUILayout.PropertyField(globalAnnotationOffset, new GUIContent("Global Offset"));
         
+        EditorGUILayout.BeginHorizontal();
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("annotationControlPoint"), new GUIContent("Control Point", "A Transform in the scene that drives the Global Offset."));
+        if (component.annotationControlPoint == null)
+        {
+            if (GUILayout.Button("Create", GUILayout.Width(60)))
+            {
+                GameObject cp = new GameObject("AnnotationControl");
+                cp.transform.SetParent(component.transform, false);
+                cp.transform.localPosition = component.globalAnnotationOffset;
+                
+                Undo.RegisterCreatedObjectUndo(cp, "Create Annotation Control Point");
+                Undo.RecordObject(component, "Assign Annotation Control Point");
+                component.annotationControlPoint = cp.transform;
+                EditorUtility.SetDirty(component);
+            }
+        }
+        else
+        {
+            if (GUILayout.Button("Select", GUILayout.Width(60)))
+            {
+                Selection.activeTransform = component.annotationControlPoint;
+            }
+        }
+        EditorGUILayout.EndHorizontal();
+        
+        EditorGUILayout.Space(5);
+        EditorGUILayout.LabelField("Master Overrides", EditorStyles.miniBoldLabel);
+        
+        // 1. Line Overrides
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("overrideLineSettings"), new GUIContent("Override All Lines"));
+        if (serializedObject.FindProperty("overrideLineSettings").boolValue)
+        {
+            EditorGUI.indentLevel++;
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterLineColor"), new GUIContent("Color"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterLineWidth"), new GUIContent("Width"));
+            EditorGUI.indentLevel--;
+        }
+
+        // 2. Fade Overrides
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("overrideFadeSettings"), new GUIContent("Override All Fading"));
+        if (serializedObject.FindProperty("overrideFadeSettings").boolValue)
+        {
+            EditorGUI.indentLevel++;
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterUseFadeIn"), new GUIContent("Use Fade In"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterFadeInStart"), new GUIContent("Start"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterFadeInEnd"), new GUIContent("End"));
+            EditorGUILayout.Space(2);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterUseFadeOut"), new GUIContent("Use Fade Out"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterFadeOutStart"), new GUIContent("Start"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterFadeOutEnd"), new GUIContent("End"));
+            EditorGUI.indentLevel--;
+        }
+
+        // 3. Visual Overrides
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("overrideVisualSettings"), new GUIContent("Override Visual Behavior"));
+        if (serializedObject.FindProperty("overrideVisualSettings").boolValue)
+        {
+            EditorGUI.indentLevel++;
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterLookAtCamera"), new GUIContent("All Look At Camera"));
+            EditorGUI.indentLevel--;
+        }
+
+        // 4. UI/Canvas Overrides
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("overrideUISettings"), new GUIContent("Override All UI Styles"));
+        if (serializedObject.FindProperty("overrideUISettings").boolValue)
+        {
+            EditorGUI.indentLevel++;
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterBackgroundColor"), new GUIContent("BG Color"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterTextColor"), new GUIContent("Text Color"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterFontSize"), new GUIContent("Font Size"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterBGSize"), new GUIContent("BG Size"));
+            EditorGUI.indentLevel--;
+        }
+
         EditorGUILayout.EndVertical();
 
         EditorGUILayout.Space();
@@ -690,17 +776,23 @@ public class ExplodedViewEditor : Editor
             }
             else if (manager.explosionMode == ExplodedView.ExplosionMode.Target && part.targetTransform != null)
             {
-                endPos = part.targetTransform.position;
+                endPos = startPos + (part.targetTransform.position - startPos) * manager.sensitivity;
                 Handles.DrawDottedLine(startPos, endPos, 4f);
             }
             else if (manager.explosionMode == ExplodedView.ExplosionMode.Curved && part.targetTransform != null)
             {
-                endPos = part.targetTransform.position;
-                
                 // Draw Bezier Curve with multi-point support
                 List<Vector3> points = new List<Vector3>();
                 points.Add(startPos);
-                foreach (var cp in part.controlPoints) if (cp != null) points.Add(cp.position);
+                foreach (var cp in part.controlPoints) 
+                {
+                    if (cp != null) 
+                    {
+                        Vector3 cpPos = startPos + (cp.position - startPos) * manager.sensitivity;
+                        points.Add(cpPos);
+                    }
+                }
+                endPos = startPos + (part.targetTransform.position - startPos) * manager.sensitivity;
                 points.Add(endPos);
 
                 // Draw segments of the curve for high-fidelity visualization
@@ -714,7 +806,7 @@ public class ExplodedViewEditor : Editor
                     lastP = nextP;
                 }
 
-                // NEW: Draw lines connecting the control points (the "hull")
+                // NEW: Draw lines connecting the scaled control points (the "hull")
                 Handles.color = new Color(manager.debugLineColor.r, manager.debugLineColor.g, manager.debugLineColor.b, 0.3f);
                 for (int i = 0; i < points.Count - 1; i++)
                 {
@@ -748,6 +840,12 @@ public class ExplodedViewEditor : Editor
     {
         EditorGUILayout.BeginHorizontal();
         EditorGUILayout.PropertyField(prop, new GUIContent(label));
+
+        if (stepCount > 0)
+        {
+            int currentIndex = Mathf.RoundToInt(prop.floatValue * stepCount);
+            EditorGUILayout.LabelField($"[{currentIndex}/{stepCount}]", EditorStyles.miniLabel, GUILayout.Width(45));
+        }
         
         if (GUILayout.Button("<", GUILayout.Width(20)))
         {
@@ -764,6 +862,12 @@ public class ExplodedViewEditor : Editor
     {
         EditorGUILayout.BeginHorizontal();
         float newValue = EditorGUILayout.Slider(label, value, 0f, 1f);
+
+        if (stepCount > 0)
+        {
+            int currentIndex = Mathf.RoundToInt(value * stepCount);
+            EditorGUILayout.LabelField($"[{currentIndex}/{stepCount}]", EditorStyles.miniLabel, GUILayout.Width(45));
+        }
 
         if (GUILayout.Button("<", GUILayout.Width(20)))
         {

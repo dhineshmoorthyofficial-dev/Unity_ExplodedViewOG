@@ -25,7 +25,7 @@ public class Annotation : MonoBehaviour
     public Vector3 lineStartOffset = Vector3.zero;
     public System.Collections.Generic.List<Vector3> intermediatePoints = new System.Collections.Generic.List<Vector3>();
     public LineAnchor lineAnchor = LineAnchor.BottomLeft;
-    public enum LineAnchor { Center, BottomLeft, BottomRight, TopLeft, TopRight }
+    public enum LineAnchor { Center, BottomLeft, BottomRight, TopLeft, TopRight, Left, Right, Top, Bottom }
     public bool showLine = true;
     public Color lineColor = Color.white;
     public float lineWidth = 0.01f;
@@ -48,6 +48,28 @@ public class Annotation : MonoBehaviour
     [HideInInspector] public float globalScaleMultiplier = 1f;
     [HideInInspector] public Vector3 globalPositionOffset = Vector3.zero;
     [HideInInspector] public bool globalVisibility = true;
+
+    // --- Global Override Data (Pushed from ExplodedView) ---
+    [HideInInspector] public bool useGlobalLineSettings = false;
+    [HideInInspector] public Color globalLineColor = Color.white;
+    [HideInInspector] public float globalLineWidth = 0.01f;
+
+    [HideInInspector] public bool useGlobalFadeSettings = false;
+    [HideInInspector] public bool globalUseFadeIn = true;
+    [HideInInspector] public float globalFadeInStart = 0.2f;
+    [HideInInspector] public float globalFadeInEnd = 0.4f;
+    [HideInInspector] public bool globalUseFadeOut = true;
+    [HideInInspector] public float globalFadeOutStart = 0.7f;
+    [HideInInspector] public float globalFadeOutEnd = 0.9f;
+
+    [HideInInspector] public bool useGlobalVisualSettings = false;
+    [HideInInspector] public bool globalLookAtCamera = true;
+
+    [HideInInspector] public bool useGlobalUISettings = false;
+    [HideInInspector] public Color globalBackgroundColor = new Color(0, 0, 0, 0.5f);
+    [HideInInspector] public Color globalTextColor = Color.white;
+    [HideInInspector] public float globalFontSize = 36f;
+    [HideInInspector] public Vector2 globalBGSize = new Vector2(250, 70);
 
     private void Reset()
     {
@@ -148,7 +170,8 @@ public class Annotation : MonoBehaviour
 
     private void Update()
     {
-        if (lookAtCamera && canvasGroup != null)
+        bool actualLookAtCamera = useGlobalVisualSettings ? globalLookAtCamera : lookAtCamera;
+        if (actualLookAtCamera && canvasGroup != null)
         {
             Camera cam = Camera.main;
             if (cam == null && Camera.allCamerasCount > 0) cam = Camera.allCameras[0];
@@ -211,8 +234,8 @@ public class Annotation : MonoBehaviour
             lineRenderer.positionCount = activePoints.Count;
             lineRenderer.SetPositions(activePoints.ToArray());
             
-            lineRenderer.startWidth = lineWidth;
-            lineRenderer.endWidth = lineWidth;
+            lineRenderer.startWidth = useGlobalLineSettings ? globalLineWidth : lineWidth;
+            lineRenderer.endWidth = useGlobalLineSettings ? globalLineWidth : lineWidth;
             
             UpdateLineGradient(currentAlpha);
         }
@@ -232,6 +255,10 @@ public class Annotation : MonoBehaviour
             case LineAnchor.TopLeft: return corners[1];
             case LineAnchor.TopRight: return corners[2];
             case LineAnchor.BottomRight: return corners[3];
+            case LineAnchor.Left: return (corners[0] + corners[1]) * 0.5f;   // Midpoint of Left edge
+            case LineAnchor.Top: return (corners[1] + corners[2]) * 0.5f;    // Midpoint of Top edge
+            case LineAnchor.Right: return (corners[2] + corners[3]) * 0.5f;  // Midpoint of Right edge
+            case LineAnchor.Bottom: return (corners[3] + corners[0]) * 0.5f; // Midpoint of Bottom edge
             case LineAnchor.Center:
             default: return (corners[0] + corners[2]) * 0.5f;
         }
@@ -243,8 +270,9 @@ public class Annotation : MonoBehaviour
 
         Gradient gradient = new Gradient();
         GradientColorKey[] colorKeys = new GradientColorKey[2];
-        colorKeys[0] = new GradientColorKey(lineColor, 0.0f);
-        colorKeys[1] = new GradientColorKey(lineColor, 1.0f);
+        Color actualLineColor = useGlobalLineSettings ? globalLineColor : lineColor;
+        colorKeys[0] = new GradientColorKey(actualLineColor, 0.0f);
+        colorKeys[1] = new GradientColorKey(actualLineColor, 1.0f);
 
         // Fade at tips: 0 at start, 1 at 20%, 1 at 80%, 0 at end
         GradientAlphaKey[] alphaKeys = new GradientAlphaKey[4];
@@ -285,6 +313,17 @@ public class Annotation : MonoBehaviour
                 if (textMesh != null)
                 {
                     textMesh.text = labelText;
+                    if (useGlobalUISettings)
+                    {
+                        textMesh.color = globalTextColor;
+                        textMesh.fontSize = globalFontSize;
+                    }
+                }
+
+                if (backgroundImage != null && useGlobalUISettings)
+                {
+                    backgroundImage.color = globalBackgroundColor;
+                    backgroundImage.rectTransform.sizeDelta = globalBGSize;
                 }
             }
         }
@@ -297,10 +336,10 @@ public class Annotation : MonoBehaviour
                 lineRenderer.sharedMaterial = lineMaterial;
             }
             
-            lineRenderer.startWidth = lineWidth;
-            lineRenderer.endWidth = lineWidth;
-            lineRenderer.startColor = lineColor;
-            lineRenderer.endColor = lineColor;
+            lineRenderer.startWidth = useGlobalLineSettings ? globalLineWidth : lineWidth;
+            lineRenderer.endWidth = useGlobalLineSettings ? globalLineWidth : lineWidth;
+            lineRenderer.startColor = useGlobalLineSettings ? globalLineColor : lineColor;
+            lineRenderer.endColor = useGlobalLineSettings ? globalLineColor : lineColor;
         }
     }
 
@@ -318,11 +357,15 @@ public class Annotation : MonoBehaviour
     {
         // Handle Fade In
         float fadeInAlpha = 1f;
-        if (useFadeIn)
+        bool actualUseFadeIn = useGlobalFadeSettings ? globalUseFadeIn : useFadeIn;
+        float actualFadeInStart = useGlobalFadeSettings ? globalFadeInStart : fadeInStart;
+        float actualFadeInEnd = useGlobalFadeSettings ? globalFadeInEnd : fadeInEnd;
+
+        if (actualUseFadeIn)
         {
-            if (fadeInStart < fadeInEnd)
-                fadeInAlpha = Mathf.InverseLerp(fadeInStart, fadeInEnd, factor);
-            else if (factor >= fadeInStart)
+            if (actualFadeInStart < actualFadeInEnd)
+                fadeInAlpha = Mathf.InverseLerp(actualFadeInStart, actualFadeInEnd, factor);
+            else if (factor >= actualFadeInStart)
                 fadeInAlpha = 1f;
             else
                 fadeInAlpha = 0f;
@@ -330,11 +373,15 @@ public class Annotation : MonoBehaviour
         
         // Handle Fade Out
         float fadeOutAlpha = 1f;
-        if (useFadeOut)
+        bool actualUseFadeOut = useGlobalFadeSettings ? globalUseFadeOut : useFadeOut;
+        float actualFadeOutStart = useGlobalFadeSettings ? globalFadeOutStart : fadeOutStart;
+        float actualFadeOutEnd = useGlobalFadeSettings ? globalFadeOutEnd : fadeOutEnd;
+
+        if (actualUseFadeOut)
         {
-            if (fadeOutStart < fadeOutEnd)
-                fadeOutAlpha = 1f - Mathf.InverseLerp(fadeOutStart, fadeOutEnd, factor);
-            else if (factor >= fadeOutStart)
+            if (actualFadeOutStart < actualFadeOutEnd)
+                fadeOutAlpha = 1f - Mathf.InverseLerp(actualFadeOutStart, actualFadeOutEnd, factor);
+            else if (factor >= actualFadeOutStart)
                 fadeOutAlpha = 0f;
             else
                 fadeOutAlpha = 1f;
