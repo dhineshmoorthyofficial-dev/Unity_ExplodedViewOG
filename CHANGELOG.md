@@ -55,6 +55,8 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - **Setup Initialization**: Ensured control points are correctly initialized during the "Reset & Setup" process.
 - **Recursive Debug Drawing**: Fixed a compilation error in `DrawDebugLinesRecursive` and improved performance.
+- **Fixed NullReferenceException**: Resolved a crash in `OnSceneGUI` related to `startTransform` access.
+- **Improved Inspector UI**: Added "Path Smoothing" control and "Reset to Default Curve Layout" button.
 - **Editor UI**: Contextual hiding of control points when in linear `Target` mode.
 
 ## [1.0.0] - 2026-01-30
