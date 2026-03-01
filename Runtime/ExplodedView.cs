@@ -17,8 +17,6 @@ public class ExplodedView : MonoBehaviour
     public bool useBoundsCenter = false;
     public bool autoGroupChildren = false;
     public bool onlyMoveImmediateChildren = false;
-    [Range(0f, 1f)]
-    public float curveStrength = 0.25f;
 
     [System.Serializable]
     public class PartData
@@ -29,7 +27,6 @@ public class ExplodedView : MonoBehaviour
         public Vector3 originalLocalScale;
         public Vector3 direction; // Used for Spherical
         public Transform targetTransform; // Used for Target/Curved Mode (Endpoint)
-        public Transform startTransform; // New: Optional start point override
         public List<Transform> controlPoints = new List<Transform>(); // New: Custom curve control
         public BoltUnscrew boltComponent; // New: Thread/Unscrew Animation logic
         public List<Annotation> annotations = new List<Annotation>(); // New: Support multiple labels per part
@@ -317,14 +314,9 @@ public class ExplodedView : MonoBehaviour
 
         foreach (var part in parts)
         {
-            if (part.startTransform == null)
-            {
-                part.startTransform = SetupTargetObject(part.transform, Vector3.zero, "ExplosionStarts");
-            }
-
             if (part.targetTransform == null)
             {
-                part.targetTransform = SetupTargetObject(part.transform, part.direction, "ExplosionTargets");
+                part.targetTransform = SetupTargetObject(part.transform, part.direction);
             }
             
             // Auto-populate control points for Curved mode if empty
@@ -352,7 +344,7 @@ public class ExplodedView : MonoBehaviour
         part.controlPoints.Clear();
         for (int i = 1; i <= 2; i++)
         {
-            float ratio = i * 0.33f; // Place them at 33% and 66% along the path for a balanced curve
+            float ratio = i * 0.05f; // Place them at 5% and 10% along the path
             string cpName = $"CP_{i}";
             Transform cp = cpContainer.Find(cpName);
             if (cp == null)
@@ -360,46 +352,28 @@ public class ExplodedView : MonoBehaviour
                 GameObject cpGo = new GameObject(cpName);
                 cp = cpGo.transform;
                 cp.SetParent(cpContainer, false);
+                
+                // Position along the path with a very subtle initial arc
+                Vector3 start = part.originalLocalPosition;
+                Vector3 end = part.targetTransform.localPosition;
+                Vector3 linearMid = Vector3.Lerp(start, end, ratio);
+                // Very subtle default arc offset (5% of unit distance)
+                cp.localPosition = part.targetTransform.InverseTransformPoint(linearMid + part.direction * 0.05f);
             }
-            
-            // Position along the path in WORLD SPACE for accuracy
-            Vector3 startPos = part.startTransform != null ? part.startTransform.position : part.transform.position;
-            Vector3 endPos = part.targetTransform.position;
-            Vector3 linearMidWorld = Vector3.Lerp(startPos, endPos, ratio);
-            
-            // For a natural "explosion" arc, we push outward from the center
-            float dist = Vector3.Distance(startPos, endPos);
-            // We use a fixed 20% offset for the initial WAYPOINT layout. 
-            // The curveStrength slider now controls the BLENDING between Linear and Bezier paths.
-            float offsetValue = dist * 0.2f; 
-            
-            // Get world-space direction
-            Vector3 worldDir = part.transform.parent != null 
-                ? part.transform.parent.TransformVector(part.direction) 
-                : part.direction;
-
-            cp.position = linearMidWorld + worldDir * offsetValue;
             part.controlPoints.Add(cp);
         }
     }
 
     public void ClearTargets()
     {
-        Transform startContainer = transform.Find("ExplosionStarts");
-        if (startContainer != null)
+        Transform container = transform.Find("ExplosionTargets");
+        if (container != null)
         {
-            DestroyImmediate(startContainer.gameObject);
-        }
-
-        Transform targetContainer = transform.Find("ExplosionTargets");
-        if (targetContainer != null)
-        {
-            DestroyImmediate(targetContainer.gameObject);
+            DestroyImmediate(container.gameObject);
         }
 
         foreach (var part in parts)
         {
-            part.startTransform = null;
             part.targetTransform = null;
             part.controlPoints.Clear();
         }
@@ -421,19 +395,18 @@ public class ExplodedView : MonoBehaviour
         }
     }
 
-    private Transform SetupTargetObject(Transform child, Vector3 localDir, string containerName = "ExplosionTargets")
+    private Transform SetupTargetObject(Transform child, Vector3 localDir)
     {
         // Look for existing target container
-        Transform container = transform.Find(containerName);
+        Transform container = transform.Find("ExplosionTargets");
         if (container == null)
         {
-            GameObject containerObj = new GameObject(containerName);
+            GameObject containerObj = new GameObject("ExplosionTargets");
             containerObj.transform.SetParent(transform, false);
             container = containerObj.transform;
         }
 
-        string prefix = containerName == "ExplosionStarts" ? "Start" : "Target";
-        string targetName = $"{prefix}_{child.name}";
+        string targetName = $"Target_{child.name}";
         Transform targetT = container.Find(targetName);
         if (targetT == null)
         {
@@ -441,7 +414,7 @@ public class ExplodedView : MonoBehaviour
             targetT = targetObj.transform;
             targetT.SetParent(container, false);
             
-            // Initial position: Offset by direction if provided
+            // Initial position: Offset by 1 unit along the direction
             targetT.localPosition = child.localPosition + localDir;
             targetT.localRotation = child.localRotation;
             targetT.localScale = child.localScale;
@@ -589,19 +562,16 @@ public class ExplodedView : MonoBehaviour
                 Vector3 displacement = part.direction * (motionTime * sensitivity);
                 part.transform.localPosition = part.originalLocalPosition + displacement;
             }
-            else if (explosionMode == ExplosionMode.Target && part.targetTransform != null && part.startTransform != null)
+            else if (explosionMode == ExplosionMode.Target && part.targetTransform != null)
             {
-                Vector3 start = part.startTransform.localPosition;
-                Vector3 targetDisplacement = part.targetTransform.localPosition - start;
-                part.transform.localPosition = start + targetDisplacement * (motionTime * sensitivity);
+                Vector3 targetDisplacement = part.targetTransform.localPosition - part.originalLocalPosition;
+                part.transform.localPosition = part.originalLocalPosition + targetDisplacement * (motionTime * sensitivity);
             }
-            else if (explosionMode == ExplosionMode.Curved && part.targetTransform != null && part.startTransform != null)
+            else if (explosionMode == ExplosionMode.Curved && part.targetTransform != null)
             {
                 // Generalized Bezier calculation using control points
                 List<Vector3> points = new List<Vector3>();
-                
-                Vector3 start = transform.InverseTransformPoint(part.startTransform.position);
-                points.Add(start);
+                points.Add(part.originalLocalPosition);
                 
                 // Scale displacements of control points and target by sensitivity
                 foreach (var cp in part.controlPoints) 
@@ -609,19 +579,16 @@ public class ExplodedView : MonoBehaviour
                     if (cp != null) 
                     {
                         Vector3 cpLocal = transform.InverseTransformPoint(cp.position);
-                        Vector3 cpDisplacement = (cpLocal - start) * sensitivity;
-                        points.Add(start + cpDisplacement);
+                        Vector3 cpDisplacement = (cpLocal - part.originalLocalPosition) * sensitivity;
+                        points.Add(part.originalLocalPosition + cpDisplacement);
                     }
                 }
                 
                 Vector3 targetLocal = transform.InverseTransformPoint(part.targetTransform.position);
-                Vector3 targetDisplacement = (targetLocal - start) * sensitivity;
-                points.Add(start + targetDisplacement);
+                Vector3 targetDisplacement = (targetLocal - part.originalLocalPosition) * sensitivity;
+                points.Add(part.originalLocalPosition + targetDisplacement);
 
-                // Blend between Piecewise Linear and Smooth Bezier
-                Vector3 linearPos = GetLinearPoint(motionTime, points);
-                Vector3 bezierPos = GetBezierPoint(motionTime, points);
-                part.transform.localPosition = Vector3.Lerp(linearPos, bezierPos, curveStrength);
+                part.transform.localPosition = GetBezierPoint(motionTime, points);
             }
 
             // Animate All Annotations if present
@@ -683,22 +650,6 @@ public class ExplodedView : MonoBehaviour
         }
         return temp[0];
     }
-    
-    private Vector3 GetLinearPoint(float t, List<Vector3> points)
-    {
-        if (points == null || points.Count == 0) return Vector3.zero;
-        if (points.Count == 1) return points[0];
-        if (t <= 0) return points[0];
-        if (t >= 1) return points[points.Count - 1];
-
-        int segments = points.Count - 1;
-        float scaledT = t * segments;
-        int index = Mathf.FloorToInt(scaledT);
-        index = Mathf.Clamp(index, 0, segments - 1);
-        float localT = scaledT - index;
-
-        return Vector3.Lerp(points[index], points[index + 1], localT);
-    }
 
     // Optional: Reset positions when disabled or destroyed to prevent "stuck" explosion
     private void OnDisable()
@@ -728,17 +679,11 @@ public class ExplodedView : MonoBehaviour
             }
         }
 
-        // 2. Cleanup Targets and Starts
-        Transform targetContainer = transform.Find("ExplosionTargets");
-        if (targetContainer != null)
+        // 2. Cleanup Targets
+        Transform container = transform.Find("ExplosionTargets");
+        if (container != null)
         {
-            DestroyImmediate(targetContainer.gameObject);
-        }
-        
-        Transform startContainer = transform.Find("ExplosionStarts");
-        if (startContainer != null)
-        {
-            DestroyImmediate(startContainer.gameObject);
+            DestroyImmediate(container.gameObject);
         }
 
         // 3. Recursive Cleanup of Sub-Managers

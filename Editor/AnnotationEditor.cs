@@ -46,7 +46,7 @@ public class AnnotationEditor : Editor
         EditorGUI.BeginChangeCheck();
         Vector3 worldStart = t.TransformPoint(annotation.lineStartOffset);
         float handleSize = HandleUtility.GetHandleSize(worldStart) * 0.15f;
-        var fmh_49_68_639077862664935276 = t.rotation; Vector3 newWorldStart = Handles.FreeMoveHandle(worldStart, handleSize, Vector3.one * 0.5f, Handles.DotHandleCap);
+        Vector3 newWorldStart = Handles.FreeMoveHandle(worldStart, t.rotation, handleSize, Vector3.one * 0.5f, Handles.DotHandleCap);
         if (EditorGUI.EndChangeCheck())
         {
             Undo.RecordObject(annotation, "Move Line Start Offset");
@@ -65,7 +65,7 @@ public class AnnotationEditor : Editor
                 
                 // Move Handle
                 EditorGUI.BeginChangeCheck();
-                var fmh_68_70_639077862664950977 = t.rotation; Vector3 newWorldPt = Handles.FreeMoveHandle(worldPt, pSize, Vector3.one * 0.5f, Handles.SphereHandleCap);
+                Vector3 newWorldPt = Handles.FreeMoveHandle(worldPt, t.rotation, pSize, Vector3.one * 0.5f, Handles.SphereHandleCap);
                 if (EditorGUI.EndChangeCheck())
                 {
                     Undo.RecordObject(annotation, "Move Intermediate Point " + i);
