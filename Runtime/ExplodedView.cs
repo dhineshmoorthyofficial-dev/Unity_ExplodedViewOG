@@ -217,6 +217,7 @@ public class ExplodedView : MonoBehaviour
         {
             // Ignore internal containers
             if (child.name == "ExplosionTargets") continue;
+ 	    if (child.name == "ExplosionStarts")  continue;
 
             bool isSignificant = false;
 
@@ -589,9 +590,9 @@ public class ExplodedView : MonoBehaviour
                 Vector3 displacement = part.direction * (motionTime * sensitivity);
                 part.transform.localPosition = part.originalLocalPosition + displacement;
             }
-            else if (explosionMode == ExplosionMode.Target && part.targetTransform != null && part.startTransform != null)
+            else if (explosionMode == ExplosionMode.Target && part.targetTransform != null)
             {
-                Vector3 start = part.startTransform.localPosition;
+                Vector3 start = part.startTransform != null ? part.startTransform.localPosition : part.originalLocalPosition;
                 Vector3 targetDisplacement = part.targetTransform.localPosition - start;
                 part.transform.localPosition = start + targetDisplacement * (motionTime * sensitivity);
             }
