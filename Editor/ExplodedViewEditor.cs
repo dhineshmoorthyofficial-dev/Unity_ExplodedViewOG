@@ -23,14 +23,39 @@ public class ExplodedViewEditor : Editor
     private SerializedProperty globalAnnotationScale;
     private SerializedProperty globalAnnotationOffset;
     private SerializedProperty globalMotionCurve;
+    private SerializedProperty onlyMoveImmediateChildren;
+    private SerializedProperty autoCreateTargets;
+    private SerializedProperty linkExplosionFactors;
+    private SerializedProperty separateMovementAndOrchestration;
+    private SerializedProperty drawDebugLines;
+    private SerializedProperty debugLineColor;
+    private SerializedProperty showHeatmap;
+    private SerializedProperty showPathLength;
+    private SerializedProperty applyDebugToChildren;
+    private SerializedProperty annotationControlPoint;
+    private SerializedProperty overrideLineSettings;
+    private SerializedProperty masterLineColor;
+    private SerializedProperty masterLineWidth;
+    private SerializedProperty overrideFadeSettings;
+    private SerializedProperty masterUseFadeIn;
+    private SerializedProperty masterFadeInStart;
+    private SerializedProperty masterFadeInEnd;
+    private SerializedProperty masterUseFadeOut;
+    private SerializedProperty masterFadeOutStart;
+    private SerializedProperty masterFadeOutEnd;
+    private SerializedProperty overrideVisualSettings;
+    private SerializedProperty masterLookAtCamera;
+    private SerializedProperty overrideUISettings;
+    private SerializedProperty masterBackgroundColor;
+    private SerializedProperty masterTextColor;
+    private SerializedProperty masterFontSize;
+    private SerializedProperty masterBGSize;
+    private SerializedProperty curveStrength;
     // We won't use the SerializedProperty for subManagers logic specifically, 
     // because we want to traverse the tree recursively via direct references.
 
     // Key: InstanceID, Value: IsExpanded. Static to persist between selections.
     private static Dictionary<int, bool> foldoutStates = new Dictionary<int, bool>();
-    
-    // Cache for SerializedObjects of sub-managers to ensure persistent editing (e.g. for AnimationCurves)
-    private Dictionary<int, SerializedObject> soCache = new Dictionary<int, SerializedObject>();
 
     private void OnEnable()
     {
@@ -46,7 +71,7 @@ public class ExplodedViewEditor : Editor
         
         // Setup ReorderableList for SubManagers
         SerializedProperty subManagersProp = serializedObject.FindProperty("subManagers");
-        subManagersList = new ReorderableList(serializedObject, subManagersProp, true, true, false, false); // Draggable, Header, No Add/Remove (managed by recursion)
+        subManagersList = new ReorderableList(serializedObject, subManagersProp, true, true, false, false);
         
         subManagersList.drawHeaderCallback = (Rect rect) => {
             EditorGUI.LabelField(rect, "Explosion Sequence (Top to Bottom)");
@@ -77,29 +102,57 @@ public class ExplodedViewEditor : Editor
                 EditorGUI.LabelField(rect, "Empty Part");
             }
         };
-
-        serializedObject.FindProperty("curveStrength"); // Ensure property exists for later if needed, but we'll use SerializedProperty for UI
         
         showAnnotations = serializedObject.FindProperty("showAnnotations");
         globalAnnotationScale = serializedObject.FindProperty("globalAnnotationScale");
         globalAnnotationOffset = serializedObject.FindProperty("globalAnnotationOffset");
         globalMotionCurve = serializedObject.FindProperty("globalMotionCurve");
+        
+        onlyMoveImmediateChildren = serializedObject.FindProperty("onlyMoveImmediateChildren");
+        autoCreateTargets = serializedObject.FindProperty("autoCreateTargets");
+        linkExplosionFactors = serializedObject.FindProperty("linkExplosionFactors");
+        separateMovementAndOrchestration = serializedObject.FindProperty("separateMovementAndOrchestration");
+        
+        drawDebugLines = serializedObject.FindProperty("drawDebugLines");
+        debugLineColor = serializedObject.FindProperty("debugLineColor");
+        showHeatmap = serializedObject.FindProperty("showHeatmap");
+        showPathLength = serializedObject.FindProperty("showPathLength");
+        applyDebugToChildren = serializedObject.FindProperty("applyDebugToChildren");
+        
+        annotationControlPoint = serializedObject.FindProperty("annotationControlPoint");
+        
+        overrideLineSettings = serializedObject.FindProperty("overrideLineSettings");
+        masterLineColor = serializedObject.FindProperty("masterLineColor");
+        masterLineWidth = serializedObject.FindProperty("masterLineWidth");
+        
+        overrideFadeSettings = serializedObject.FindProperty("overrideFadeSettings");
+        masterUseFadeIn = serializedObject.FindProperty("masterUseFadeIn");
+        masterFadeInStart = serializedObject.FindProperty("masterFadeInStart");
+        masterFadeInEnd = serializedObject.FindProperty("masterFadeInEnd");
+        masterUseFadeOut = serializedObject.FindProperty("masterUseFadeOut");
+        masterFadeOutStart = serializedObject.FindProperty("masterFadeOutStart");
+        masterFadeOutEnd = serializedObject.FindProperty("masterFadeOutEnd");
+        
+        overrideVisualSettings = serializedObject.FindProperty("overrideVisualSettings");
+        masterLookAtCamera = serializedObject.FindProperty("masterLookAtCamera");
+        
+        overrideUISettings = serializedObject.FindProperty("overrideUISettings");
+        masterBackgroundColor = serializedObject.FindProperty("masterBackgroundColor");
+        masterTextColor = serializedObject.FindProperty("masterTextColor");
+        masterFontSize = serializedObject.FindProperty("masterFontSize");
+        masterBGSize = serializedObject.FindProperty("masterBGSize");
+        curveStrength = serializedObject.FindProperty("curveStrength");
     }
 
     private void OnDisable()
     {
-        if (soCache != null)
-        {
-            foreach (var so in soCache.Values)
-            {
-                if (so != null) so.Dispose();
-            }
-            soCache.Clear();
-        }
     }
 
     public override void OnInspectorGUI()
     {
+        if (explosionMode == null) OnEnable();
+        if (explosionMode == null) return;
+
         serializedObject.Update();
 
         EditorGUILayout.LabelField("Settings", EditorStyles.boldLabel);
@@ -146,18 +199,42 @@ public class ExplodedViewEditor : Editor
         }
         
         EditorGUILayout.PropertyField(autoGroupChildren);
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("onlyMoveImmediateChildren"), new GUIContent("Only Move Immediate Children", "If enabled, only immediate children will be moved, ignoring deep hierarchies. Significant performance boost for complex models."));
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("autoCreateTargets"), new GUIContent("Auto-Create Targets"));
+        EditorGUILayout.PropertyField(onlyMoveImmediateChildren, new GUIContent("Only Move Immediate Children", "If enabled, only immediate children will be moved, ignoring deep hierarchies. Significant performance boost for complex models."));
+        EditorGUILayout.PropertyField(autoCreateTargets, new GUIContent("Auto-Create Targets"));
+
+        if ((ExplodedView.ExplosionMode)explosionMode.enumValueIndex == ExplodedView.ExplosionMode.Curved)
+        {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.PropertyField(curveStrength, new GUIContent("Path Smoothing", "0 = Linear path through points, 1 = Smooth Bezier curve."));
+            if (GUILayout.Button("Reset to Default Curve Layout"))
+            {
+                if (EditorUtility.DisplayDialog("Refresh Curves", "This will reset all existing control points for Curved mode based on the new strength. Continue?", "Yes", "Cancel"))
+                {
+                    foreach (var t in targets)
+                    {
+                        ExplodedView ev = t as ExplodedView;
+                        if (ev != null)
+                        {
+                            Undo.RecordObject(ev, "Refresh Curves");
+                            // Clear existing control points to force re-initialization
+                            foreach(var p in ev.parts) p.controlPoints.Clear();
+                            ev.InitializeTargetMode();
+                            EditorUtility.SetDirty(ev);
+                        }
+                    }
+                }
+            }
+            EditorGUILayout.EndVertical();
+        }
         
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Orchestration", EditorStyles.boldLabel);
         EditorGUILayout.PropertyField(orchestrateSubManagers, new GUIContent("Orchestrate Sequence"));
         if (orchestrateSubManagers.boolValue)
         {
-            SerializedProperty linkFactors = serializedObject.FindProperty("linkExplosionFactors");
-            EditorGUILayout.PropertyField(linkFactors, new GUIContent("Link to Main Explosion"));
+            EditorGUILayout.PropertyField(linkExplosionFactors, new GUIContent("Link to Main Explosion"));
             
-            bool isLinked = linkFactors.boolValue;
+            bool isLinked = linkExplosionFactors.boolValue;
             
             // If linked, show the explosion factor is driving it.
             // If NOT linked, we enable the slider (unless controlled by parent)
@@ -172,8 +249,7 @@ public class ExplodedViewEditor : Editor
             {
                 EditorGUILayout.HelpBox("Orchestration is driven by the Main Explosion Factor.", MessageType.Info);
                 EditorGUI.indentLevel++;
-                SerializedProperty separate = serializedObject.FindProperty("separateMovementAndOrchestration");
-                EditorGUILayout.PropertyField(separate, new GUIContent("Sequential Mode (Parts then Subs)"));
+                EditorGUILayout.PropertyField(separateMovementAndOrchestration, new GUIContent("Sequential Mode (Parts then Subs)"));
                 EditorGUI.indentLevel--;
             }
             
@@ -202,6 +278,10 @@ public class ExplodedViewEditor : Editor
                 EditorUtility.SetDirty(component);
             }
         }
+        else
+        {
+            EditorGUILayout.HelpBox("Parts list not available.", MessageType.Warning);
+        }
 
         EditorGUILayout.BeginVertical(EditorStyles.helpBox);
         EditorGUILayout.LabelField("Visual Fidelity & Debugging", EditorStyles.boldLabel);
@@ -209,13 +289,13 @@ public class ExplodedViewEditor : Editor
         // Debug Overlays
         EditorGUILayout.LabelField("Debug Overlays", EditorStyles.miniBoldLabel);
         EditorGUILayout.BeginHorizontal();
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("drawDebugLines"), new GUIContent("Draw Path Lines"));
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("debugLineColor"), GUIContent.none, GUILayout.Width(50));
+        EditorGUILayout.PropertyField(drawDebugLines, new GUIContent("Draw Path Lines"));
+        EditorGUILayout.PropertyField(debugLineColor, GUIContent.none, GUILayout.Width(50));
         EditorGUILayout.EndHorizontal();
         
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("showHeatmap"), new GUIContent("Distance Heatmap"));
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("showPathLength"), new GUIContent("Path Lengths"));
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("applyDebugToChildren"), new GUIContent("Apply Globally"));
+        EditorGUILayout.PropertyField(showHeatmap, new GUIContent("Distance Heatmap"));
+        EditorGUILayout.PropertyField(showPathLength, new GUIContent("Path Lengths"));
+        EditorGUILayout.PropertyField(applyDebugToChildren, new GUIContent("Apply Globally"));
 
         EditorGUILayout.Space(5);
         
@@ -226,7 +306,7 @@ public class ExplodedViewEditor : Editor
         EditorGUILayout.PropertyField(globalAnnotationOffset, new GUIContent("Global Offset"));
         
         EditorGUILayout.BeginHorizontal();
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("annotationControlPoint"), new GUIContent("Control Point", "A Transform in the scene that drives the Global Offset."));
+        EditorGUILayout.PropertyField(annotationControlPoint, new GUIContent("Control Point", "A Transform in the scene that drives the Global Offset."));
         if (component.annotationControlPoint == null)
         {
             if (GUILayout.Button("Create", GUILayout.Width(60)))
@@ -254,48 +334,48 @@ public class ExplodedViewEditor : Editor
         EditorGUILayout.LabelField("Master Overrides", EditorStyles.miniBoldLabel);
         
         // 1. Line Overrides
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("overrideLineSettings"), new GUIContent("Override All Lines"));
-        if (serializedObject.FindProperty("overrideLineSettings").boolValue)
+        EditorGUILayout.PropertyField(overrideLineSettings, new GUIContent("Override All Lines"));
+        if (overrideLineSettings.boolValue)
         {
             EditorGUI.indentLevel++;
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterLineColor"), new GUIContent("Color"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterLineWidth"), new GUIContent("Width"));
+            EditorGUILayout.PropertyField(masterLineColor, new GUIContent("Color"));
+            EditorGUILayout.PropertyField(masterLineWidth, new GUIContent("Width"));
             EditorGUI.indentLevel--;
         }
 
         // 2. Fade Overrides
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("overrideFadeSettings"), new GUIContent("Override All Fading"));
-        if (serializedObject.FindProperty("overrideFadeSettings").boolValue)
+        EditorGUILayout.PropertyField(overrideFadeSettings, new GUIContent("Override All Fading"));
+        if (overrideFadeSettings.boolValue)
         {
             EditorGUI.indentLevel++;
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterUseFadeIn"), new GUIContent("Use Fade In"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterFadeInStart"), new GUIContent("Start"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterFadeInEnd"), new GUIContent("End"));
+            EditorGUILayout.PropertyField(masterUseFadeIn, new GUIContent("Use Fade In"));
+            EditorGUILayout.PropertyField(masterFadeInStart, new GUIContent("Start"));
+            EditorGUILayout.PropertyField(masterFadeInEnd, new GUIContent("End"));
             EditorGUILayout.Space(2);
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterUseFadeOut"), new GUIContent("Use Fade Out"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterFadeOutStart"), new GUIContent("Start"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterFadeOutEnd"), new GUIContent("End"));
+            EditorGUILayout.PropertyField(masterUseFadeOut, new GUIContent("Use Fade Out"));
+            EditorGUILayout.PropertyField(masterFadeOutStart, new GUIContent("Start"));
+            EditorGUILayout.PropertyField(masterFadeOutEnd, new GUIContent("End"));
             EditorGUI.indentLevel--;
         }
 
         // 3. Visual Overrides
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("overrideVisualSettings"), new GUIContent("Override Visual Behavior"));
-        if (serializedObject.FindProperty("overrideVisualSettings").boolValue)
+        EditorGUILayout.PropertyField(overrideVisualSettings, new GUIContent("Override Visual Behavior"));
+        if (overrideVisualSettings.boolValue)
         {
             EditorGUI.indentLevel++;
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterLookAtCamera"), new GUIContent("All Look At Camera"));
+            EditorGUILayout.PropertyField(masterLookAtCamera, new GUIContent("All Look At Camera"));
             EditorGUI.indentLevel--;
         }
 
         // 4. UI/Canvas Overrides
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("overrideUISettings"), new GUIContent("Override All UI Styles"));
-        if (serializedObject.FindProperty("overrideUISettings").boolValue)
+        EditorGUILayout.PropertyField(overrideUISettings, new GUIContent("Override All UI Styles"));
+        if (overrideUISettings.boolValue)
         {
             EditorGUI.indentLevel++;
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterBackgroundColor"), new GUIContent("BG Color"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterTextColor"), new GUIContent("Text Color"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterFontSize"), new GUIContent("Font Size"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("masterBGSize"), new GUIContent("BG Size"));
+            EditorGUILayout.PropertyField(masterBackgroundColor, new GUIContent("BG Color"));
+            EditorGUILayout.PropertyField(masterTextColor, new GUIContent("Text Color"));
+            EditorGUILayout.PropertyField(masterFontSize, new GUIContent("Font Size"));
+            EditorGUILayout.PropertyField(masterBGSize, new GUIContent("BG Size"));
             EditorGUI.indentLevel--;
         }
 
@@ -442,13 +522,17 @@ public class ExplodedViewEditor : Editor
 
                 bool newOrchestrateParts = EditorGUILayout.Toggle("Orchestrator(Parts)", sub.orchestrateParts);
                 
-                // Use cached SO for sub-manager's local global curve
-                int subID = sub.GetInstanceID();
-                if (!soCache.ContainsKey(subID)) soCache[subID] = new SerializedObject(sub);
-                SerializedObject cachedSubSO = soCache[subID];
-                cachedSubSO.Update();
-                EditorGUILayout.PropertyField(cachedSubSO.FindProperty("globalMotionCurve"), new GUIContent("Local Global Curve"));
-                cachedSubSO.ApplyModifiedProperties();
+                // Motion Quality Controls for Sub-Managers
+                EditorGUI.indentLevel++;
+                EditorGUI.BeginChangeCheck();
+                AnimationCurve newCurve = EditorGUILayout.CurveField("Local Global Curve", sub.globalMotionCurve);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    Undo.RecordObject(sub, "Change Main Curve");
+                    sub.globalMotionCurve = newCurve;
+                    EditorUtility.SetDirty(sub);
+                }
+                EditorGUI.indentLevel--;
 
                 if (EditorGUI.EndChangeCheck())
                 {
@@ -462,10 +546,6 @@ public class ExplodedViewEditor : Editor
                     sub.orchestrateParts = newOrchestrateParts;
                     sub.separateMovementAndOrchestration = newSeparate;
                     EditorUtility.SetDirty(sub);
-                    
-                    // Force repaint to ensure UI updates immediately
-                    // EditorUtility.SetDirty might not force inspector repaint if selection is different
-                    // But usually it does for nested editors. We can try to force it via SceneView or similar if needed.
                 }
 
                 // Sub-Manager Debug Settings
@@ -501,10 +581,12 @@ public class ExplodedViewEditor : Editor
                     if (partData != null)
                     {
                         EditorGUI.BeginChangeCheck();
+                        Transform newStart = (Transform)EditorGUILayout.ObjectField("Startpoint", partData.startTransform, typeof(Transform), true);
                         Transform newTarget = (Transform)EditorGUILayout.ObjectField("Endpoint", partData.targetTransform, typeof(Transform), true);
                         if (EditorGUI.EndChangeCheck())
                         {
-                            Undo.RecordObject(manager, "Change Target Reference");
+                            Undo.RecordObject(manager, "Change Curve Transforms");
+                            partData.startTransform = newStart;
                             partData.targetTransform = newTarget;
                             EditorUtility.SetDirty(manager);
                         }
@@ -618,32 +700,29 @@ public class ExplodedViewEditor : Editor
             if (GUILayout.Button("Select", GUILayout.Width(50))) Selection.activeGameObject = part.transform.gameObject;
             EditorGUILayout.EndHorizontal();
 
-            // Use persistent SerializedObject for parts to fix "can't select curve" issue
-            int managerID = manager.GetInstanceID();
-            if (!soCache.ContainsKey(managerID)) soCache[managerID] = new SerializedObject(manager);
-            SerializedObject partSO = soCache[managerID];
-            partSO.Update();
-
             // Motion Quality Controls (Show for all modes)
             EditorGUI.indentLevel++;
-            var partsProp = partSO.FindProperty("parts");
-            int partIndex = manager.parts.IndexOf(part);
-            if (partIndex >= 0)
+            EditorGUI.BeginChangeCheck();
+            AnimationCurve newMotionCurve = EditorGUILayout.CurveField("Motion Curve", part.motionCurve);
+            float newDelay = EditorGUILayout.FloatField("Delay", part.delay);
+            if (EditorGUI.EndChangeCheck())
             {
-                var elementProp = partsProp.GetArrayElementAtIndex(partIndex);
-                EditorGUILayout.PropertyField(elementProp.FindPropertyRelative("motionCurve"));
-                EditorGUILayout.PropertyField(elementProp.FindPropertyRelative("delay"));
-                partSO.ApplyModifiedProperties();
+                Undo.RecordObject(manager, "Change Part Motion");
+                part.motionCurve = newMotionCurve;
+                part.delay = newDelay;
+                EditorUtility.SetDirty(manager);
             }
             EditorGUI.indentLevel--;
 
             if (isParentInTargetMode)
             {
                 EditorGUI.BeginChangeCheck();
+                Transform newStart = (Transform)EditorGUILayout.ObjectField("Startpoint", part.startTransform, typeof(Transform), true);
                 Transform newTarget = (Transform)EditorGUILayout.ObjectField("Endpoint", part.targetTransform, typeof(Transform), true);
                 if (EditorGUI.EndChangeCheck())
                 {
-                    Undo.RecordObject(manager, "Change Target Reference");
+                    Undo.RecordObject(manager, "Change Curve Transforms");
+                    part.startTransform = newStart;
                     part.targetTransform = newTarget;
                     EditorUtility.SetDirty(manager);
                 }
@@ -761,9 +840,9 @@ public class ExplodedViewEditor : Editor
             {
                 if (part == null || part.transform == null) continue;
 
-            Vector3 startPos = part.transform.parent != null 
+            Vector3 startPos = (part.startTransform != null) ? part.startTransform.position : (part.transform.parent != null 
                 ? part.transform.parent.TransformPoint(part.originalLocalPosition) 
-                : part.originalLocalPosition;
+                : part.transform.position);
             
             Vector3 endPos = startPos;
 
@@ -777,7 +856,6 @@ public class ExplodedViewEditor : Editor
             else if (manager.explosionMode == ExplodedView.ExplosionMode.Target && part.targetTransform != null)
             {
                 endPos = startPos + (part.targetTransform.position - startPos) * manager.sensitivity;
-                Handles.DrawDottedLine(startPos, endPos, 4f);
             }
             else if (manager.explosionMode == ExplodedView.ExplosionMode.Curved && part.targetTransform != null)
             {
@@ -801,7 +879,10 @@ public class ExplodedViewEditor : Editor
                 for (int i = 1; i <= segments; i++)
                 {
                     float t = i / (float)segments;
-                    Vector3 nextP = GetBezierPointWorld(t, points);
+                    Vector3 bezP = GetBezierPointWorld(t, points);
+                    Vector3 linP = GetLinearPointWorld(t, points);
+                    Vector3 nextP = Vector3.Lerp(linP, bezP, manager.curveStrength);
+                    
                     Handles.DrawLine(lastP, nextP);
                     lastP = nextP;
                 }
@@ -943,5 +1024,21 @@ public class ExplodedViewEditor : Editor
             for (int i = 0; i < n - j; i++)
                 temp[i] = Vector3.Lerp(temp[i], temp[i + 1], t);
         return temp[0];
+    }
+
+    private Vector3 GetLinearPointWorld(float t, List<Vector3> points)
+    {
+        if (points == null || points.Count == 0) return Vector3.zero;
+        if (points.Count == 1) return points[0];
+        if (t <= 0) return points[0];
+        if (t >= 1) return points[points.Count - 1];
+
+        int segments = points.Count - 1;
+        float scaledT = t * segments;
+        int index = Mathf.FloorToInt(scaledT);
+        index = Mathf.Clamp(index, 0, segments - 1);
+        float localT = scaledT - index;
+
+        return Vector3.Lerp(points[index], points[index + 1], localT);
     }
 }
