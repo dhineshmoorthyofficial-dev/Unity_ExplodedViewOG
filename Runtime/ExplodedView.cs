@@ -658,7 +658,7 @@ public class ExplodedView : MonoBehaviour
                         anno.globalTextColor = masterTextColor;
                         anno.globalFontSize = masterFontSize;
                         anno.globalBGSize = masterBGSize;
-
+                        
                         anno.Animate(motionTime);
                     }
                 }

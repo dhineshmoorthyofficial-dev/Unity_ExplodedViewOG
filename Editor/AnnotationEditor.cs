@@ -34,9 +34,16 @@ public class AnnotationEditor : Editor
         Vector3 newWorldLabelPos = Handles.PositionHandle(worldLabelPos, t.rotation);
         if (EditorGUI.EndChangeCheck())
         {
-            Undo.RecordObject(annotation, "Move Label Position");
-            annotation.positionOffset = t.InverseTransformPoint(newWorldLabelPos);
-            EditorUtility.SetDirty(annotation);
+            Vector3 delta = t.InverseTransformPoint(newWorldLabelPos) - annotation.positionOffset;
+            foreach (var obj in Selection.objects)
+            {
+                if (obj is GameObject go && go.TryGetComponent<Annotation>(out var a))
+                {
+                    Undo.RecordObject(a, "Move Label Position");
+                    a.positionOffset += delta;
+                    EditorUtility.SetDirty(a);
+                }
+            }
         }
         Handles.Label(worldLabelPos + Vector3.up * 0.1f, "Label Position", EditorStyles.whiteMiniLabel);
 
@@ -46,12 +53,19 @@ public class AnnotationEditor : Editor
         EditorGUI.BeginChangeCheck();
         Vector3 worldStart = t.TransformPoint(annotation.lineStartOffset);
         float handleSize = HandleUtility.GetHandleSize(worldStart) * 0.15f;
-        var fmh_49_68_639077862664935276 = t.rotation; Vector3 newWorldStart = Handles.FreeMoveHandle(worldStart, handleSize, Vector3.one * 0.5f, Handles.DotHandleCap);
+        Vector3 newWorldStart = Handles.FreeMoveHandle(worldStart, handleSize, Vector3.one * 0.5f, Handles.DotHandleCap);
         if (EditorGUI.EndChangeCheck())
         {
-            Undo.RecordObject(annotation, "Move Line Start Offset");
-            annotation.lineStartOffset = t.InverseTransformPoint(newWorldStart);
-            EditorUtility.SetDirty(annotation);
+            Vector3 delta = t.InverseTransformPoint(newWorldStart) - annotation.lineStartOffset;
+            foreach (var obj in Selection.objects)
+            {
+                if (obj is GameObject go && go.TryGetComponent<Annotation>(out var a))
+                {
+                    Undo.RecordObject(a, "Move Line Start Offset");
+                    a.lineStartOffset += delta;
+                    EditorUtility.SetDirty(a);
+                }
+            }
         }
         Handles.Label(worldStart + Vector3.up * 0.05f, "Line Start", EditorStyles.miniLabel);
 
@@ -65,20 +79,39 @@ public class AnnotationEditor : Editor
                 
                 // Move Handle
                 EditorGUI.BeginChangeCheck();
-                var fmh_68_70_639077862664950977 = t.rotation; Vector3 newWorldPt = Handles.FreeMoveHandle(worldPt, pSize, Vector3.one * 0.5f, Handles.SphereHandleCap);
+                Vector3 newWorldPt = Handles.FreeMoveHandle(worldPt, pSize, Vector3.one * 0.5f, Handles.SphereHandleCap);
                 if (EditorGUI.EndChangeCheck())
                 {
-                    Undo.RecordObject(annotation, "Move Intermediate Point " + i);
-                    annotation.intermediatePoints[i] = t.InverseTransformPoint(newWorldPt);
-                    EditorUtility.SetDirty(annotation);
+                    Vector3 delta = t.InverseTransformPoint(newWorldPt) - annotation.intermediatePoints[i];
+                    foreach (var obj in Selection.objects)
+                    {
+                        if (obj is GameObject go && go.TryGetComponent<Annotation>(out var a))
+                        {
+                            if (a.intermediatePoints != null && i < a.intermediatePoints.Count)
+                            {
+                                Undo.RecordObject(a, "Move Intermediate Point " + i);
+                                a.intermediatePoints[i] += delta;
+                                EditorUtility.SetDirty(a);
+                            }
+                        }
+                    }
                 }
 
                 // Small Delete Button Handle
                 if (Handles.Button(worldPt + Vector3.up * pSize * 1.5f, t.rotation, pSize * 0.5f, pSize * 0.5f, Handles.RectangleHandleCap))
                 {
-                    Undo.RecordObject(annotation, "Delete Intermediate Point " + i);
-                    annotation.intermediatePoints.RemoveAt(i);
-                    EditorUtility.SetDirty(annotation);
+                    foreach (var obj in Selection.objects)
+                    {
+                        if (obj is GameObject go && go.TryGetComponent<Annotation>(out var a))
+                        {
+                            if (a.intermediatePoints != null && i < a.intermediatePoints.Count)
+                            {
+                                Undo.RecordObject(a, "Delete Intermediate Point " + i);
+                                a.intermediatePoints.RemoveAt(i);
+                                EditorUtility.SetDirty(a);
+                            }
+                        }
+                    }
                     break; 
                 }
                 
@@ -86,30 +119,43 @@ public class AnnotationEditor : Editor
             }
         }
 
-        // 4. Scene View UI Overlay
-        Handles.BeginGUI();
-        GUILayout.BeginArea(new Rect(10, 10, 150, 100));
-        GUILayout.BeginVertical("box");
-        GUILayout.Label("Line Points", EditorStyles.boldLabel);
-        if (GUILayout.Button("Add Point"))
+        // 4. Scene View UI Overlay (Show if active or if selected elsewhere while locked)
+        if (Selection.activeObject == annotation.gameObject || !System.Array.Exists(Selection.objects, obj => obj == annotation.gameObject))
         {
-            Undo.RecordObject(annotation, "Add Intermediate Point");
-            Vector3 lastPt = annotation.intermediatePoints.Count > 0 
-                ? annotation.intermediatePoints[annotation.intermediatePoints.Count - 1] 
-                : annotation.lineStartOffset;
-            
-            // Add point halfway to label as a guess
-            annotation.intermediatePoints.Add(Vector3.Lerp(lastPt, annotation.positionOffset, 0.5f));
-            EditorUtility.SetDirty(annotation);
+           Handles.BeginGUI();
+            GUILayout.BeginArea(new Rect(10, 10, 150, 100));
+            GUILayout.BeginVertical("box");
+            GUILayout.Label("Multi-Edit Points", EditorStyles.boldLabel);
+            if (GUILayout.Button("Add Point to All"))
+            {
+                foreach (var obj in Selection.objects)
+                {
+                    if (obj is GameObject go && go.TryGetComponent<Annotation>(out var a))
+                    {
+                        Undo.RecordObject(a, "Add Intermediate Point");
+                        Vector3 lastPt = a.intermediatePoints.Count > 0 
+                            ? a.intermediatePoints[a.intermediatePoints.Count - 1] 
+                            : a.lineStartOffset;
+                        a.intermediatePoints.Add(Vector3.Lerp(lastPt, a.positionOffset, 0.5f));
+                        EditorUtility.SetDirty(a);
+                    }
+                }
+            }
+            if (GUILayout.Button("Clear All Points"))
+            {
+                foreach (var obj in Selection.objects)
+                {
+                    if (obj is GameObject go && go.TryGetComponent<Annotation>(out var a))
+                    {
+                        Undo.RecordObject(a, "Clear Intermediate Points");
+                        a.intermediatePoints.Clear();
+                        EditorUtility.SetDirty(a);
+                    }
+                }
+            }
+            GUILayout.EndVertical();
+            GUILayout.EndArea();
+            Handles.EndGUI();
         }
-        if (GUILayout.Button("Clear Points"))
-        {
-            Undo.RecordObject(annotation, "Clear Intermediate Points");
-            annotation.intermediatePoints.Clear();
-            EditorUtility.SetDirty(annotation);
-        }
-        GUILayout.EndVertical();
-        GUILayout.EndArea();
-        Handles.EndGUI();
     }
 }

@@ -20,6 +20,7 @@ public class Annotation : MonoBehaviour
     public Vector3 positionOffset = new Vector3(0, 0.2f, 0);
     public float canvasScale = 0.01f;
     public bool autoCreateUI = true;
+    public TMPro.TextAlignmentOptions textAlignment = TMPro.TextAlignmentOptions.Center;
 
     [Header("Line Path")]
     public Vector3 lineStartOffset = Vector3.zero;
@@ -72,6 +73,11 @@ public class Annotation : MonoBehaviour
     [HideInInspector] public Color globalTextColor = Color.white;
     [HideInInspector] public float globalFontSize = 36f;
     [HideInInspector] public Vector2 globalBGSize = new Vector2(250, 70);
+
+    [Header("Selection State")]
+    public bool isSelected = false; // Tracked for multi-edit logic
+    private Color originalBGColor;
+    private bool hasStoredOriginalColor = false;
 
     private void Reset()
     {
@@ -321,12 +327,27 @@ public class Annotation : MonoBehaviour
                         textMesh.color = globalTextColor;
                         textMesh.fontSize = globalFontSize;
                     }
+
+                    textMesh.alignment = textAlignment;
                 }
 
-                if (backgroundImage != null && useGlobalUISettings)
+                if (backgroundImage != null)
                 {
-                    backgroundImage.color = globalBackgroundColor;
-                    backgroundImage.rectTransform.sizeDelta = globalBGSize;
+                    if (!hasStoredOriginalColor)
+                    {
+                        originalBGColor = backgroundImage.color;
+                        hasStoredOriginalColor = true;
+                    }
+
+                    if (useGlobalUISettings)
+                    {
+                        backgroundImage.color = isSelected ? Color.cyan : globalBackgroundColor;
+                        backgroundImage.rectTransform.sizeDelta = globalBGSize;
+                    }
+                    else
+                    {
+                        backgroundImage.color = isSelected ? Color.cyan : originalBGColor;
+                    }
                 }
             }
         }
