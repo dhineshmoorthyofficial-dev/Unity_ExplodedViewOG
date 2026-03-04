@@ -48,6 +48,8 @@ public class Annotation : MonoBehaviour
     [HideInInspector] public float globalScaleMultiplier = 1f;
     [HideInInspector] public Vector3 globalPositionOffset = Vector3.zero;
     [HideInInspector] public bool globalVisibility = true;
+    [HideInInspector] public bool treeVisibility = true; // Manual override from Model Tree
+    [HideInInspector] public bool isolateVisibility = true; // Visibility due to isolation logic
 
     // --- Global Override Data (Pushed from ExplodedView) ---
     [HideInInspector] public bool useGlobalLineSettings = false;
@@ -191,7 +193,7 @@ public class Annotation : MonoBehaviour
     {
         if (lineRenderer == null) return;
         
-        bool isVisible = showLine && globalVisibility && currentAlpha > 0;
+        bool isVisible = showLine && globalVisibility && treeVisibility && isolateVisibility && currentAlpha > 0;
         lineRenderer.enabled = isVisible;
 
         if (isVisible)
@@ -299,13 +301,14 @@ public class Annotation : MonoBehaviour
     {
         if (canvasGroup != null)
         {
-            // Sync active state with global visibility override
-            if (canvasGroup.gameObject.activeSelf != globalVisibility)
+            // Sync active state with global and tree and isolate visibility overrides
+            bool shouldBeActive = globalVisibility && treeVisibility && isolateVisibility;
+            if (canvasGroup.gameObject.activeSelf != shouldBeActive)
             {
-                canvasGroup.gameObject.SetActive(globalVisibility);
+                canvasGroup.gameObject.SetActive(shouldBeActive);
             }
 
-            if (globalVisibility)
+            if (shouldBeActive)
             {
                 canvasGroup.transform.localPosition = positionOffset + globalPositionOffset;
                 canvasGroup.transform.localScale = Vector3.one * (canvasScale * globalScaleMultiplier);
@@ -341,6 +344,20 @@ public class Annotation : MonoBehaviour
             lineRenderer.startColor = useGlobalLineSettings ? globalLineColor : lineColor;
             lineRenderer.endColor = useGlobalLineSettings ? globalLineColor : lineColor;
         }
+    }
+
+    public void SetTreeVisibility(bool visible)
+    {
+        treeVisibility = visible;
+        UpdateUIProperties();
+        UpdateLine();
+    }
+
+    public void SetIsolateVisibility(bool visible)
+    {
+        isolateVisibility = visible;
+        UpdateUIProperties();
+        UpdateLine();
     }
 
     public void Animate(float factor)
@@ -392,6 +409,8 @@ public class Annotation : MonoBehaviour
 
     private void ApplyAlpha(float alpha)
     {
+        if (!treeVisibility || !isolateVisibility) alpha = 0;
+        
         if (canvasGroup != null)
         {
             canvasGroup.alpha = alpha;
