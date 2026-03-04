@@ -142,10 +142,33 @@ public class ExplodedViewEditor : Editor
         masterFontSize = serializedObject.FindProperty("masterFontSize");
         masterBGSize = serializedObject.FindProperty("masterBGSize");
         curveStrength = serializedObject.FindProperty("curveStrength");
+
+        // Start selection sync
+        EditorApplication.update += SyncSelectionState;
     }
 
     private void OnDisable()
     {
+        EditorApplication.update -= SyncSelectionState;
+    }
+
+    private void SyncSelectionState()
+    {
+        // Simple global sync: if transform is in selection, set isSelected = true
+        var allAnnotations = GameObject.FindObjectsOfType<Annotation>(true);
+        var selectedTransforms = new HashSet<Transform>();
+        foreach (var obj in Selection.transforms) selectedTransforms.Add(obj);
+
+        foreach (var anno in allAnnotations)
+        {
+            bool selected = selectedTransforms.Contains(anno.transform);
+            if (anno.isSelected != selected)
+            {
+                anno.isSelected = selected;
+                // Force repaint of all scene views to show highlights
+                SceneView.RepaintAll();
+            }
+        }
     }
 
     public override void OnInspectorGUI()
@@ -374,12 +397,32 @@ public class ExplodedViewEditor : Editor
             EditorGUI.indentLevel++;
             EditorGUILayout.PropertyField(masterBackgroundColor, new GUIContent("BG Color"));
             EditorGUILayout.PropertyField(masterTextColor, new GUIContent("Text Color"));
-            EditorGUILayout.PropertyField(masterFontSize, new GUIContent("Font Size"));
-            EditorGUILayout.PropertyField(masterBGSize, new GUIContent("BG Size"));
+            EditorGUILayout.PropertyField(masterFontSize, new GUIContent("Master Font Size"));
+            EditorGUILayout.PropertyField(masterBGSize, new GUIContent("Master BG Size"));
             EditorGUI.indentLevel--;
         }
 
         EditorGUILayout.EndVertical();
+
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Selection Tools", EditorStyles.boldLabel);
+        EditorGUILayout.BeginHorizontal();
+        if (GUILayout.Button("Select Local Annotations"))
+        {
+            List<GameObject> list = new List<GameObject>();
+            foreach (var part in component.parts)
+            {
+                foreach (var anno in part.annotations) if (anno != null) list.Add(anno.gameObject);
+            }
+            Selection.objects = list.ToArray();
+        }
+        if (GUILayout.Button("Select Branch Annotations"))
+        {
+            List<GameObject> list = new List<GameObject>();
+            AddAnnotationsRecursive(component, list);
+            Selection.objects = list.ToArray();
+        }
+        EditorGUILayout.EndHorizontal();
 
         EditorGUILayout.Space();
 
@@ -774,7 +817,6 @@ public class ExplodedViewEditor : Editor
     {
         ExplodedView manager = (ExplodedView)target;
         if (manager == null) return;
-
         DrawDebugLinesRecursive(manager, manager);
         DrawDebugOverlays(manager, manager);
     }
@@ -1040,5 +1082,18 @@ public class ExplodedViewEditor : Editor
         float localT = scaledT - index;
 
         return Vector3.Lerp(points[index], points[index + 1], localT);
+    }
+
+    private void AddAnnotationsRecursive(ExplodedView manager, List<GameObject> list)
+    {
+        if (manager == null) return;
+        foreach (var part in manager.parts)
+        {
+            foreach (var anno in part.annotations) if (anno != null) list.Add(anno.gameObject);
+        }
+        foreach (var sub in manager.subManagers)
+        {
+            AddAnnotationsRecursive(sub, list);
+        }
     }
 }
